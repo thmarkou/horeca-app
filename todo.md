@@ -1,0 +1,41 @@
+# Project TODO
+
+- [x] Αρχικοποίηση Expo mobile project με React Native, TypeScript και Expo Router
+- [x] Δημιουργία design.md με mobile-first iOS σχεδιασμό για το HORECA marketplace
+- [x] Ορισμός brand ταυτότητας και οπτικού ύφους εφαρμογής
+- [x] Δημιουργία custom app icon και ενημέρωση branding αρχείων
+- [x] Προσαρμογή app.config.ts με τελικό app name και logo URL
+- [x] Προσαρμογή theme.config.js στη χρωματική παλέτα του προϊόντος
+- [x] Σχεδιασμός navigation shell με buyer-first tabs
+- [x] Υλοποίηση welcome/onboarding οθόνης
+- [x] Υλοποίηση sign in οθόνης
+- [x] Υλοποίηση sign up οθόνης
+- [x] Υλοποίηση buyer home dashboard
+- [x] Υλοποίηση supplier directory με φίλτρα και κατηγορίες
+- [x] Υλοποίηση supplier profile screen
+- [x] Υλοποίηση product catalog screen
+- [x] Υλοποίηση product detail screen
+- [x] Υλοποίηση cart screen
+- [x] Υλοποίηση checkout screen
+- [x] Υλοποίηση orders list screen
+- [x] Υλοποίηση order detail screen
+- [x] Υλοποίηση favorites screen
+- [x] Υλοποίηση account/settings screen
+- [x] Υλοποίηση supplier dashboard
+- [x] Υλοποίηση supplier orders screen
+- [x] Δημιουργία mock data models για suppliers, products, orders και buyer context
+- [ ] Προετοιμασία reusable UI components για cards, badges, filters και sections
+- [x] Έλεγχος υγείας έργου και διόρθωση build/type issues
+- [x] Δημιουργία πρώτης έκδοσης για έλεγχο σε iPhone 14 Pro Max
+- [x] Διερεύνηση και διόρθωση του preview error `removeChild` στο web rendering
+- [x] Διόρθωση της επιλογής ρόλου στη φόρμα δημιουργίας λογαριασμού ώστε να γίνεται σωστά εναλλαγή μεταξύ Αγοραστή και Προμηθευτή
+- [x] Διόρθωση της καταχώρησης δημιουργίας λογαριασμού προμηθευτή ώστε το submit να ολοκληρώνει σωστά τη ροή εγγραφής
+- [x] Διερεύνηση και οριστική διόρθωση της επανεμφάνισης του preview error `removeChild` στο web rendering μετά τις πρόσφατες αλλαγές στη ροή εγγραφής
+- [x] Οριστική διόρθωση του επιβεβαιωμένου React DOM `removeChild` crash στο web preview κατά unmount/navigation transitions
+- [x] Βαθιά διερεύνηση της νέας επανεμφάνισης του React DOM `removeChild` crash μετά τα προηγούμενα fixes σε auth και orders flows
+- [ ] Διερεύνηση του επίμονου React DOM `removeChild` crash που συνεχίζει να εμφανίζεται στο preview μετά το τελευταίο structural fix
+- [ ] Προετοιμασία ασφαλούς μεταφοράς του τρέχοντος source στο υπάρχον GitHub repository `thmarkou/horeca-app`
+- [ ] Σύνταξη σαφών οδηγιών για άνοιγμα και εκτέλεση του project σε VS Code ή Cursor με τοπικό source
+- [ ] Εξήγηση της απουσίας των `ios/` και `android/` folders και των βημάτων για χρήση με Xcode όταν απαιτείται
+- [x] Διερεύνηση και διόρθωση του unstyled ή partially mounted preview rendering που εμφανίζει σκέτο κείμενο μετά την υποχώρηση του `removeChild` crash
+- [ ] Παροχή πρακτικών οδηγιών για λήψη του source, push στο GitHub και τοπική επεξεργασία σε VS Code ή Cursor
