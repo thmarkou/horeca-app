@@ -6,6 +6,12 @@ node_modules/
 dist/
 web-build/
 
+# iOS (Xcode / CocoaPods — keep Podfile.lock, omit installed pods)
+ios/Pods/
+ios/build/
+ios/**/*.xcuserstate
+ios/**/*.xcuserdata/
+
 # Native
 *.orig.*
 *.jks
