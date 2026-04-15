@@ -1,11 +1,15 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { featuredProducts } from "@/lib/mocks/horeca";
+import { useProductsBySupplierQuery, useSupplierByIdQuery } from "@/lib/horeca-queries";
 
 export default function SupplierProfileScreen() {
   const router = useRouter();
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const supplierId = Number(id ?? "1") || 1;
+  const { data: supplier } = useSupplierByIdQuery({ id: supplierId });
+  const { data: supplierProducts = [] } = useProductsBySupplierQuery({ supplierId });
 
   return (
     <ScreenContainer className="px-5 py-4" edges={["top", "bottom", "left", "right"]}>
@@ -15,32 +19,45 @@ export default function SupplierProfileScreen() {
             <Text className="text-sm font-semibold text-primary">Πίσω</Text>
           </TouchableOpacity>
 
-          <View className="rounded-[28px] border border-border bg-surface p-5">
-            <Text className="text-sm font-semibold text-muted">Verified supplier</Text>
-            <Text className="mt-2 text-[28px] font-bold leading-8 text-foreground">Aegean Coffee Trade</Text>
-            <Text className="mt-3 text-base leading-7 text-muted">
-              Προμηθευτής specialty καφέ, γάλακτος barista και συνοδευτικών για καφετέριες με κάλυψη σε Αθήνα και προάστια.
-            </Text>
-            <View className="mt-5 flex-row items-center justify-between">
-              <View>
-                <Text className="text-sm text-muted">Βαθμολογία</Text>
-                <Text className="text-base font-semibold text-foreground">4.9★</Text>
-              </View>
-              <View>
-                <Text className="text-sm text-muted">Παράδοση</Text>
-                <Text className="text-base font-semibold text-foreground">Σε 24 ώρες</Text>
-              </View>
-              <View>
-                <Text className="text-sm text-muted">MOQ</Text>
-                <Text className="text-base font-semibold text-foreground">80€</Text>
+          {supplier ? (
+            <View className="rounded-[28px] border border-border bg-surface p-5">
+              <Text className="text-sm font-semibold text-muted">
+                {supplier.verified ? "Verified supplier" : "Supplier"}
+              </Text>
+              <Text className="mt-2 text-[28px] font-bold leading-8 text-foreground">{supplier.name}</Text>
+              <Text className="mt-3 text-base leading-7 text-muted">{supplier.highlight}</Text>
+              <View className="mt-5 flex-row items-center justify-between">
+                <View>
+                  <Text className="text-sm text-muted">{"Βαθμολογία"}</Text>
+                  <Text className="text-base font-semibold text-foreground">
+                    {supplier.rating.toFixed(1)}★
+                  </Text>
+                </View>
+                <View className="flex-1 px-2">
+                  <Text className="text-sm text-muted">Παράδοση</Text>
+                  <Text className="text-base font-semibold text-foreground">{supplier.deliveryTime}</Text>
+                </View>
+                <View>
+                  <Text className="text-sm text-muted">MOQ</Text>
+                  <Text className="text-base font-semibold text-foreground">{supplier.minimumOrder}</Text>
+                </View>
               </View>
             </View>
-          </View>
+          ) : (
+            <Text className="text-base text-muted">Ο προμηθευτής δεν βρέθηκε.</Text>
+          )}
+
 
           <View className="gap-3">
             <Text className="text-lg font-bold text-foreground">Ενδεικτικά προϊόντα</Text>
-            {featuredProducts.map((product) => (
-              <TouchableOpacity key={product.id} onPress={() => router.push("/product-detail")} className="rounded-[24px] border border-border bg-background p-4">
+            {supplierProducts.map((product) => (
+              <TouchableOpacity
+                key={product.id}
+                onPress={() =>
+                  router.push({ pathname: "/product-detail", params: { id: product.id } })
+                }
+                className="rounded-[24px] border border-border bg-background p-4"
+              >
                 <View className="flex-row items-center justify-between gap-3">
                   <View className="flex-1">
                     <Text className="text-base font-semibold text-foreground">{product.name}</Text>

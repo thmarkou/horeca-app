@@ -1,37 +1,48 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import * as Auth from "@/lib/_core/auth";
+import * as Api from "@/lib/_core/api";
+import {
+  navigateAfterHorecaAuth,
+  setStoredHorecaProfile,
+  type HorecaAccountRole,
+} from "@/lib/horeca-stored-role";
 
-type AccountRole = "buyer" | "supplier";
-
-const DEMO_ROLE_KEY = "horeca-source-demo-role";
-const DEMO_COMPANY_KEY = "horeca-source-demo-company";
+function mapRegisterError(message: string): string {
+  if (message.includes("An account with this email already exists")) {
+    return "\u03a5\u03c0\u03ac\u03c1\u03c7\u03b5\u03b9 \u03ae\u03b4\u03b7 \u03bb\u03bf\u03b3\u03b1\u03c1\u03b9\u03b1\u03c3\u03bc\u03cc\u03c2 \u03bc\u03b5 \u03b1\u03c5\u03c4\u03cc \u03c4\u03bf email.";
+  }
+  if (message.includes("Company name is required")) {
+    return "\u03a3\u03c5\u03bc\u03c0\u03bb\u03b7\u03c1\u03ce\u03c3\u03c4\u03b5 \u03c4\u03b7\u03bd \u03b5\u03c0\u03c9\u03bd\u03c5\u03bc\u03af\u03b1 \u03c4\u03b7\u03c2 \u03b5\u03c0\u03b9\u03c7\u03b5\u03af\u03c1\u03b7\u03c3\u03b7\u03c2.";
+  }
+  if (message.includes("Valid business email")) {
+    return "\u03a3\u03c5\u03bc\u03c0\u03bb\u03b7\u03c1\u03ce\u03c3\u03c4\u03b5 \u03ad\u03b3\u03ba\u03c5\u03c1\u03bf email \u03b5\u03c0\u03b9\u03c7\u03b5\u03af\u03c1\u03b7\u03c3\u03b7\u03c2.";
+  }
+  if (message.includes("at least 8 characters")) {
+    return "\u039f \u03ba\u03c9\u03b4\u03b9\u03ba\u03cc\u03c2 \u03c0\u03c1\u03ad\u03c0\u03b5\u03b9 \u03bd\u03b1 \u03ad\u03c7\u03b5\u03b9 \u03c4\u03bf\u03c5\u03bb\u03ac\u03c7\u03b9\u03c3\u03c4\u03bf\u03bd 8 \u03c7\u03b1\u03c1\u03b1\u03ba\u03c4\u03ae\u03c1\u03b5\u03c2.";
+  }
+  if (message.includes("Database is not available")) {
+    return "\u0397 \u03c5\u03c0\u03b7\u03c1\u03b5\u03c3\u03af\u03b1 \u03b4\u03b5\u03bd \u03b5\u03af\u03bd\u03b1\u03b9 \u03b4\u03b9\u03b1\u03b8\u03ad\u03c3\u03b9\u03bc\u03b7 \u03b1\u03c5\u03c4\u03ae \u03c4\u03b7 \u03c3\u03c4\u03b9\u03b3\u03bc\u03ae. \u0394\u03bf\u03ba\u03b9\u03bc\u03ac\u03c3\u03c4\u03b5 \u03b1\u03c1\u03b3\u03cc\u03c4\u03b5\u03c1\u03b1.";
+  }
+  if (message.includes("Network request failed") || message.includes("Failed to fetch")) {
+    return "\u0394\u03b5\u03bd \u03c6\u03c4\u03ac\u03bd\u03b5\u03b9 \u03c3\u03c4\u03bf API. \u0391\u03bd\u03bf\u03af\u03be\u03c4\u03b5 \u03c4\u03b5\u03c1\u03bc\u03b1\u03c4\u03b9\u03ba\u03cc \u03bc\u03b5 pnpm dev (\u03c0\u03bb\u03b1\u03c4\u03c6\u03cc\u03c1\u03bc\u03b1 + Metro).";
+  }
+  return (
+    message ||
+    "\u0397 \u03b4\u03b7\u03bc\u03b9\u03bf\u03c5\u03c1\u03b3\u03af\u03b1 \u03bb\u03bf\u03b3\u03b1\u03c1\u03b9\u03b1\u03c3\u03bc\u03bf\u03cd \u03b4\u03b5\u03bd \u03bf\u03bb\u03bf\u03ba\u03bb\u03b7\u03c1\u03ce\u03b8\u03b7\u03ba\u03b5. \u0394\u03bf\u03ba\u03b9\u03bc\u03ac\u03c3\u03c4\u03b5 \u03be\u03b1\u03bd\u03ac."
+  );
+}
 
 export default function SignUpScreen() {
   const router = useRouter();
-  const [role, setRole] = useState<AccountRole>("buyer");
+  const [role, setRole] = useState<HorecaAccountRole>("buyer");
   const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const persistDemoRole = async (nextRole: AccountRole, nextCompanyName: string) => {
-    if (Platform.OS === "web") {
-      window.localStorage.setItem(DEMO_ROLE_KEY, nextRole);
-      window.localStorage.setItem(DEMO_COMPANY_KEY, nextCompanyName);
-      return;
-    }
-
-    await AsyncStorage.multiSet([
-      [DEMO_ROLE_KEY, nextRole],
-      [DEMO_COMPANY_KEY, nextCompanyName],
-    ]);
-  };
 
   const handleCreateAccount = async () => {
     const trimmedCompanyName = companyName.trim();
@@ -56,30 +67,19 @@ export default function SignUpScreen() {
       setIsSubmitting(true);
       setErrorMessage(null);
 
-      await Auth.setUserInfo({
-        id: Date.now(),
-        openId: `demo-${role}-${Date.now()}`,
-        name: trimmedCompanyName,
-        email: trimmedEmail,
-        loginMethod: "demo-signup",
-        lastSignedIn: new Date(),
-      });
-
-      if (Platform.OS !== "web") {
-        await Auth.setSessionToken(`demo-session-${Date.now()}`);
-      }
-
-      await persistDemoRole(role, trimmedCompanyName);
-
-      if (role === "supplier") {
-        router.replace("/supplier-dashboard");
-        return;
-      }
-
-      router.replace("/(tabs)");
+      const result = await Api.registerWithEmailPassword(
+        trimmedEmail,
+        password,
+        trimmedCompanyName,
+        role,
+      );
+      await Api.applyAuthApiResult(result);
+      await setStoredHorecaProfile(role, trimmedCompanyName);
+      await navigateAfterHorecaAuth(router, role);
     } catch (error) {
-      console.error("[SignUp] Failed to create demo account", error);
-      setErrorMessage("Η δημιουργία λογαριασμού δεν ολοκληρώθηκε. Δοκιμάστε ξανά.");
+      console.error("[SignUp] Register failed", error);
+      const msg = error instanceof Error ? error.message : String(error);
+      setErrorMessage(mapRegisterError(msg));
     } finally {
       setIsSubmitting(false);
     }
@@ -160,6 +160,7 @@ export default function SignUpScreen() {
                   placeholderTextColor="#94A3B8"
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  autoCorrect={false}
                   className="rounded-2xl border border-border bg-background px-4 py-4 text-base text-foreground"
                   returnKeyType="next"
                 />
@@ -200,10 +201,6 @@ export default function SignUpScreen() {
                   </Text>
                 </View>
               </TouchableOpacity>
-
-              <Text className="text-xs leading-5 text-muted">
-                Η τρέχουσα ροή δημιουργεί demo λογαριασμό για έλεγχο του MVP και σας μεταφέρει στην αντίστοιχη εμπειρία χρήσης.
-              </Text>
             </View>
           </View>
 

@@ -2,10 +2,11 @@ import { useRouter } from "expo-router";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { recentOrders } from "@/lib/mocks/horeca";
+import { useRecentOrdersQuery } from "@/lib/horeca-queries";
 
 export default function SupplierOrdersScreen() {
   const router = useRouter();
+  const { data: recentOrders = [] } = useRecentOrdersQuery({ limit: 20 });
 
   return (
     <ScreenContainer className="px-5 py-4" edges={["top", "bottom", "left", "right"]}>
@@ -24,7 +25,11 @@ export default function SupplierOrdersScreen() {
 
           <View className="gap-3">
             {recentOrders.map((order) => (
-              <TouchableOpacity key={order.id} onPress={() => router.push("/order-detail")} className="rounded-[24px] border border-border bg-surface p-4">
+              <TouchableOpacity
+                key={order.id}
+                onPress={() => router.push({ pathname: "/order-detail", params: { id: order.id } })}
+                className="rounded-[24px] border border-border bg-surface p-4"
+              >
                 <Text className="text-base font-semibold text-foreground">{order.id}</Text>
                 <Text className="mt-1 text-sm text-muted">{order.supplierName}</Text>
                 <View className="mt-3 flex-row items-center justify-between">

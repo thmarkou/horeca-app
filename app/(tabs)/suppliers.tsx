@@ -4,11 +4,13 @@ import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-nativ
 import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
-import { supplierCategories, suppliers } from "@/lib/mocks/horeca";
+import { useSupplierCategoriesQuery, useSuppliersListQuery } from "@/lib/horeca-queries";
 
 export default function SuppliersScreen() {
   const colors = useColors();
   const router = useRouter();
+  const { data: supplierCategories = [] } = useSupplierCategoriesQuery();
+  const { data: suppliers = [] } = useSuppliersListQuery({});
 
   return (
     <ScreenContainer className="px-5" containerClassName="bg-background">
@@ -54,7 +56,9 @@ export default function SuppliersScreen() {
             {suppliers.map((supplier) => (
                 <TouchableOpacity
                   key={supplier.id}
-                  onPress={() => router.push("/supplier-profile")}
+                  onPress={() =>
+                    router.push({ pathname: "/supplier-profile", params: { id: supplier.id } })
+                  }
                   className="rounded-[24px] border border-border bg-surface p-4"
                 >
                 <View className="flex-row items-start justify-between gap-3">

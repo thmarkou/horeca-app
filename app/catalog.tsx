@@ -2,10 +2,11 @@ import { useRouter } from "expo-router";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { featuredProducts } from "@/lib/mocks/horeca";
+import { useFeaturedProductsQuery } from "@/lib/horeca-queries";
 
 export default function CatalogScreen() {
   const router = useRouter();
+  const { data: featuredProducts = [] } = useFeaturedProductsQuery({ limit: 50 });
 
   return (
     <ScreenContainer className="px-5 py-4" edges={["top", "bottom", "left", "right"]}>
@@ -39,7 +40,12 @@ export default function CatalogScreen() {
                     <Text className="text-xs font-semibold text-muted">{product.availability}</Text>
                   </View>
                   <View className="flex-row gap-2">
-                    <TouchableOpacity onPress={() => router.push("/product-detail")} className="rounded-full border border-border bg-background px-4 py-2">
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({ pathname: "/product-detail", params: { id: product.id } })
+                      }
+                      className="rounded-full border border-border bg-background px-4 py-2"
+                    >
                       <Text className="text-sm font-semibold text-foreground">Λεπτομέρειες</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => router.push("/cart")} className="rounded-full bg-primary px-4 py-2">

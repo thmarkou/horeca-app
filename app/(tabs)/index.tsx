@@ -4,24 +4,21 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
-import { featuredProducts, recentOrders, supplierCategories, suppliers } from "@/lib/mocks/horeca";
-
-function getStatusClasses(status: string) {
-  switch (status) {
-    case "Ολοκληρώθηκε":
-      return "bg-success/10 text-success";
-    case "Καθ' οδόν":
-      return "bg-primary/10 text-primary";
-    case "Σε επεξεργασία":
-      return "bg-warning/10 text-warning";
-    default:
-      return "bg-surface text-muted";
-  }
-}
+import {
+  useFeaturedProductsQuery,
+  useRecentOrdersQuery,
+  useSupplierCategoriesQuery,
+  useSuppliersListQuery,
+} from "@/lib/horeca-queries";
+import { getOrderStatusClasses } from "@/lib/order-status-styles";
 
 export default function HomeScreen() {
   const router = useRouter();
   const colors = useColors();
+  const { data: supplierCategories = [] } = useSupplierCategoriesQuery();
+  const { data: suppliers = [] } = useSuppliersListQuery({});
+  const { data: featuredProducts = [] } = useFeaturedProductsQuery({ limit: 10 });
+  const { data: recentOrders = [] } = useRecentOrdersQuery({ limit: 10 });
 
   return (
     <ScreenContainer className="px-5" containerClassName="bg-background">
@@ -98,7 +95,7 @@ export default function HomeScreen() {
               {suppliers.map((supplier) => (
                 <TouchableOpacity
                   key={supplier.id}
-                  onPress={() => router.push("/supplier-profile")}
+                  onPress={() => router.push({ pathname: "/supplier-profile", params: { id: supplier.id } })}
                   className="rounded-[24px] border border-border bg-surface p-4"
                 >
                   <View className="flex-row items-start justify-between gap-3">
@@ -152,7 +149,7 @@ export default function HomeScreen() {
                       <Text className="text-xs font-semibold text-muted">{product.availability}</Text>
                     </View>
                     <View className="flex-row gap-2">
-                      <TouchableOpacity onPress={() => router.push("/product-detail")} className="rounded-full border border-border bg-surface px-4 py-2">
+                      <TouchableOpacity onPress={() => router.push({ pathname: "/product-detail", params: { id: product.id } })} className="rounded-full border border-border bg-surface px-4 py-2">
                         <Text className="text-sm font-semibold text-foreground">Λεπτομέρειες</Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => router.push("/cart")} className="rounded-full bg-primary px-4 py-2">
@@ -184,7 +181,7 @@ export default function HomeScreen() {
                       <Text className="text-base font-semibold text-foreground">{order.supplierName}</Text>
                       <Text className="text-sm text-muted">{order.id} · {order.itemCount} είδη</Text>
                     </View>
-                    <View className={`rounded-full px-3 py-2 ${getStatusClasses(order.status)}`}>
+                    <View className={`rounded-full px-3 py-2 ${getOrderStatusClasses(order.status)}`}>
                       <Text className="text-xs font-semibold">{order.status}</Text>
                     </View>
                   </View>

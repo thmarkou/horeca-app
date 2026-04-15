@@ -1,9 +1,12 @@
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { featuredProducts, suppliers } from "@/lib/mocks/horeca";
+import { useFeaturedProductsQuery, useSuppliersListQuery } from "@/lib/horeca-queries";
 
 export default function FavoritesScreen() {
+  const { data: suppliers = [] } = useSuppliersListQuery({});
+  const { data: featuredProducts = [] } = useFeaturedProductsQuery({ limit: 10 });
+
   return (
     <ScreenContainer className="px-5" containerClassName="bg-background">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>

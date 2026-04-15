@@ -1,5 +1,5 @@
 // Load environment variables with proper priority (system > .env)
-import "./scripts/load-env.js";
+import "./scripts/load-env.mjs";
 import type { ExpoConfig } from "expo/config";
 
 // Bundle ID format: space.manus.<project_name_dots>.<timestamp>
@@ -25,6 +25,15 @@ const bundleId =
 // e.g., "space.manus.my.app.t20240115103045" -> "manus20240115103045"
 const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
 const schemeFromBundleId = `manus${timestamp}`;
+
+// Same resolution as platform/index.ts (PORT / PLATFORM_PORT) so Xcode + Simulator match the API port.
+const horecaApiPort =
+  process.env.EXPO_PUBLIC_DEV_API_PORT ||
+  process.env.EXPO_PUBLIC_PLATFORM_PORT ||
+  process.env.PLATFORM_PORT ||
+  process.env.PORT ||
+  "3000";
+const horecaApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, "").trim() ?? "";
 
 const env = {
   // App branding - update these values directly (do not use env vars)
@@ -84,8 +93,13 @@ const config: ExpoConfig = {
     output: "static",
     favicon: "./assets/images/favicon.png",
   },
+  extra: {
+    horecaApiPort,
+    ...(horecaApiBaseUrl ? { horecaApiBaseUrl } : {}),
+  },
   plugins: [
     "expo-router",
+    "expo-font",
     [
       "expo-audio",
       {
@@ -123,7 +137,8 @@ const config: ExpoConfig = {
   ],
   experiments: {
     typedRoutes: true,
-    reactCompiler: true,
+    // Experimental; can contribute to JS runtime crashes alongside Fabric — disable if you see EXC_BAD_ACCESS in Xcode.
+    reactCompiler: false,
   },
 };
 

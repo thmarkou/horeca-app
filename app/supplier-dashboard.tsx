@@ -2,10 +2,11 @@ import { useRouter } from "expo-router";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { supplierOperationalSummary } from "@/lib/mocks/horeca";
+import { useSupplierOperationalSummaryQuery } from "@/lib/horeca-queries";
 
 export default function SupplierDashboardScreen() {
   const router = useRouter();
+  const { data: supplierOperationalSummary } = useSupplierOperationalSummaryQuery();
 
   return (
     <ScreenContainer className="px-5 py-4" edges={["top", "bottom", "left", "right"]}>
@@ -25,19 +26,27 @@ export default function SupplierDashboardScreen() {
           <View className="rounded-[28px] border border-border bg-surface p-5">
             <View className="flex-row items-center justify-between">
               <Text className="text-sm text-muted">Νέες παραγγελίες</Text>
-              <Text className="text-lg font-bold text-foreground">{supplierOperationalSummary.newOrders}</Text>
+              <Text className="text-lg font-bold text-foreground">
+                {supplierOperationalSummary?.newOrders ?? "—"}
+              </Text>
             </View>
             <View className="mt-4 flex-row items-center justify-between">
               <Text className="text-sm text-muted">Σε επεξεργασία</Text>
-              <Text className="text-lg font-bold text-foreground">{supplierOperationalSummary.processingOrders}</Text>
+              <Text className="text-lg font-bold text-foreground">
+                {supplierOperationalSummary?.processingOrders ?? "—"}
+              </Text>
             </View>
             <View className="mt-4 flex-row items-center justify-between">
               <Text className="text-sm text-muted">Χαμηλό απόθεμα</Text>
-              <Text className="text-lg font-bold text-foreground">{supplierOperationalSummary.lowStockItems}</Text>
+              <Text className="text-lg font-bold text-foreground">
+                {supplierOperationalSummary?.lowStockItems ?? "—"}
+              </Text>
             </View>
             <View className="mt-4 flex-row items-center justify-between">
               <Text className="text-sm text-muted">Τζίρος ημέρας</Text>
-              <Text className="text-lg font-bold text-foreground">{supplierOperationalSummary.todayRevenue}</Text>
+              <Text className="text-lg font-bold text-foreground">
+                {supplierOperationalSummary?.todayRevenue ?? "—"}
+              </Text>
             </View>
           </View>
 

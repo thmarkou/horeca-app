@@ -1,3 +1,7 @@
+/**
+ * Starter catalog samples used by `pnpm db:seed` to populate the central platform DB.
+ * App screens load live data from the API, not from these arrays at runtime.
+ */
 export type UserRole = "buyer" | "supplier";
 
 export type SupplierCategory =
@@ -52,7 +56,7 @@ export const supplierCategories: SupplierCategory[] = [
 
 export const suppliers: Supplier[] = [
   {
-    id: "sup-1",
+    id: "1",
     name: "Aegean Coffee Trade",
     category: "Καφές",
     location: "Αθήνα",
@@ -63,7 +67,7 @@ export const suppliers: Supplier[] = [
     highlight: "Specialty καφέδες, γάλατα barista και συνοδευτικά για καφετέριες.",
   },
   {
-    id: "sup-2",
+    id: "2",
     name: "Fresh Roots Market",
     category: "Πρώτες Ύλες",
     location: "Θεσσαλονίκη",
@@ -74,7 +78,7 @@ export const suppliers: Supplier[] = [
     highlight: "Φρέσκα λαχανικά, βότανα και εποχιακά προϊόντα για επαγγελματική κουζίνα.",
   },
   {
-    id: "sup-3",
+    id: "3",
     name: "Blue Pack Essentials",
     category: "Αναλώσιμα",
     location: "Πειραιάς",
@@ -88,8 +92,8 @@ export const suppliers: Supplier[] = [
 
 export const featuredProducts: Product[] = [
   {
-    id: "prd-1",
-    supplierId: "sup-1",
+    id: "1",
+    supplierId: "1",
     name: "Brazil Santos Espresso Blend",
     unit: "1 κιλό",
     price: "18,90€",
@@ -97,8 +101,8 @@ export const featuredProducts: Product[] = [
     category: "Καφές",
   },
   {
-    id: "prd-2",
-    supplierId: "sup-2",
+    id: "2",
+    supplierId: "2",
     name: "Ντομάτα αποφλοιωμένη κονκασέ",
     unit: "5 κιλά",
     price: "10,40€",
@@ -106,8 +110,8 @@ export const featuredProducts: Product[] = [
     category: "Πρώτες Ύλες",
   },
   {
-    id: "prd-3",
-    supplierId: "sup-3",
+    id: "3",
+    supplierId: "3",
     name: "Ποτήρι χάρτινο διπλό 12oz",
     unit: "50 τεμ.",
     price: "3,60€",
@@ -149,3 +153,26 @@ export const supplierOperationalSummary = {
   lowStockItems: 4,
   todayRevenue: "1.280€",
 };
+
+const PRODUCT_DESCRIPTIONS: Record<string, string> = {
+  "1":
+    "Μείγμα espresso υψηλής ποιότητας, κατάλληλο για επαγγελματικές μηχανές. Σημειώσεις καραμελωμένων καρπών.",
+  "2":
+    "Κονκασέ ντομάτας για σάλτσες και επαγγελματική κουζίνα. Συσκευασία 5 κιλών.",
+  "3":
+    "Χάρτινα ποτήρια διπλού τοιχώματος 12oz για takeaway. Συσκευασία 50 τεμαχίων.",
+};
+
+/** Full product row for detail screen (mock). */
+export function getProductDetailByNumericId(id: number) {
+  const p = featuredProducts.find((x) => Number(x.id) === id);
+  if (!p) return null;
+  const supplier = suppliers.find((s) => s.id === p.supplierId);
+  return {
+    ...p,
+    description:
+      PRODUCT_DESCRIPTIONS[p.id] ??
+      "Λεπτομέρειες από τον κατάλογο του προμηθευτή.",
+    supplierName: supplier?.name ?? "",
+  };
+}

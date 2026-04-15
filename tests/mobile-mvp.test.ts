@@ -1,11 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { featuredProducts, recentOrders, suppliers } from "../lib/mocks/horeca";
 
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+
 describe("Horeca Source mobile MVP", () => {
   it("έχει ενημερωμένο branding στο app config", () => {
-    const config = readFileSync("/home/ubuntu/horeca_mobile_app/app.config.ts", "utf8");
+    const config = readFileSync(path.join(root, "app.config.ts"), "utf8");
 
     expect(config).toContain('appName: "Horeca Source"');
     expect(config).toContain("horeca-source-icon-YUE3GiZc9HHTh2v6QQyKj3.png");
@@ -13,88 +17,110 @@ describe("Horeca Source mobile MVP", () => {
 
   it("διαθέτει τα βασικά route files του MVP", () => {
     const requiredRoutes = [
-      "/home/ubuntu/horeca_mobile_app/app/index.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/welcome.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/sign-in.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/sign-up.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/catalog.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/product-detail.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/cart.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/checkout.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/supplier-profile.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/order-detail.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/supplier-dashboard.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/supplier-orders.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/(tabs)/index.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/(tabs)/suppliers.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/(tabs)/orders.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/(tabs)/favorites.tsx",
-      "/home/ubuntu/horeca_mobile_app/app/(tabs)/account.tsx",
+      "app/index.tsx",
+      "app/welcome.tsx",
+      "app/sign-in.tsx",
+      "app/sign-up.tsx",
+      "app/catalog.tsx",
+      "app/product-detail.tsx",
+      "app/cart.tsx",
+      "app/checkout.tsx",
+      "app/supplier-profile.tsx",
+      "app/order-detail.tsx",
+      "app/supplier-dashboard.tsx",
+      "app/supplier-orders.tsx",
+      "app/(tabs)/index.tsx",
+      "app/(tabs)/suppliers.tsx",
+      "app/(tabs)/orders.tsx",
+      "app/(tabs)/favorites.tsx",
+      "app/(tabs)/account.tsx",
     ];
 
-    requiredRoutes.forEach((filePath) => {
+    requiredRoutes.forEach((rel) => {
+      const filePath = path.join(root, rel);
       expect(existsSync(filePath), `${filePath} should exist`).toBe(true);
     });
   });
 
-  it("φορτώνει ουσιαστικά mock δεδομένα για suppliers, products και orders", () => {
+  it("διατηρεί mock κατάλογο (suppliers, products, orders) για offline UI", () => {
     expect(suppliers.length).toBeGreaterThanOrEqual(3);
     expect(featuredProducts.length).toBeGreaterThanOrEqual(3);
     expect(recentOrders.length).toBeGreaterThanOrEqual(3);
     expect(suppliers.every((supplier) => supplier.name.length > 0)).toBe(true);
   });
 
+  it("φορτώνει κατάλογο από την κεντρική πλατφόρμα (API)", () => {
+    const src = readFileSync(path.join(root, "lib/horeca-queries.ts"), "utf8");
+    expect(src).toContain("useFeaturedProductsQuery");
+    expect(src).toContain("useSuppliersListQuery");
+    expect(src).toContain("/api/catalog/");
+  });
+
+  it("έχει νέο backend φάκελο platform με Hono API", () => {
+    expect(existsSync(path.join(root, "platform/app.ts"))).toBe(true);
+    expect(existsSync(path.join(root, "platform/db/schema.ts"))).toBe(true);
+  });
+
   it("έχει τα απαιτούμενα icon assets για iOS και Android branding", () => {
     const assetPaths = [
-      "/home/ubuntu/horeca_mobile_app/assets/images/icon.png",
-      "/home/ubuntu/horeca_mobile_app/assets/images/splash-icon.png",
-      "/home/ubuntu/horeca_mobile_app/assets/images/favicon.png",
-      "/home/ubuntu/horeca_mobile_app/assets/images/android-icon-foreground.png",
+      "assets/images/icon.png",
+      "assets/images/splash-icon.png",
+      "assets/images/favicon.png",
+      "assets/images/android-icon-foreground.png",
     ];
 
-    assetPaths.forEach((filePath) => {
+    assetPaths.forEach((rel) => {
+      const filePath = path.join(root, rel);
       expect(existsSync(filePath), `${filePath} should exist`).toBe(true);
     });
   });
 
   it("υποστηρίζει εναλλαγή ρόλου και λειτουργικό submit στη φόρμα εγγραφής", () => {
-    const signUpScreen = readFileSync("/home/ubuntu/horeca_mobile_app/app/sign-up.tsx", "utf8");
+    const signUpScreen = readFileSync(path.join(root, "app/sign-up.tsx"), "utf8");
 
     expect(signUpScreen).toContain("useState");
-    expect(signUpScreen).toContain("const [role, setRole] = useState<AccountRole>(\"buyer\")");
-    expect(signUpScreen).toContain("onPress={() => setRole(\"buyer\")}");
-    expect(signUpScreen).toContain("onPress={() => setRole(\"supplier\")}");
+    expect(signUpScreen).toContain('const [role, setRole] = useState<HorecaAccountRole>("buyer")');
+    expect(signUpScreen).toContain('onPress={() => setRole("buyer")}');
+    expect(signUpScreen).toContain('onPress={() => setRole("supplier")}');
     expect(signUpScreen).toContain("const handleCreateAccount = async () => {");
     expect(signUpScreen).toContain("onPress={handleCreateAccount}");
-    expect(signUpScreen).toContain('router.replace("/supplier-dashboard")');
-    expect(signUpScreen).toContain('router.replace("/(tabs)")');
-    expect(signUpScreen).toContain("Η δημιουργία λογαριασμού δεν ολοκληρώθηκε. Δοκιμάστε ξανά.");
+    expect(signUpScreen).toContain("registerWithEmailPassword");
+    expect(signUpScreen).toContain("navigateAfterHorecaAuth");
+    expect(signUpScreen).toContain("mapRegisterError");
   });
 
-  it("αποφεύγει nested Text onPress links στις auth οθόνες για ασφαλέστερο web rendering", () => {
-    const signUpScreen = readFileSync("/home/ubuntu/horeca_mobile_app/app/sign-up.tsx", "utf8");
-    const signInScreen = readFileSync("/home/ubuntu/horeca_mobile_app/app/sign-in.tsx", "utf8");
+  it("αποφεύγει nested Text onPress links στις auth οθόνες", () => {
+    const signUpScreen = readFileSync(path.join(root, "app/sign-up.tsx"), "utf8");
+    const signInScreen = readFileSync(path.join(root, "app/sign-in.tsx"), "utf8");
 
-    expect(signUpScreen).not.toContain('<Text className="font-semibold text-primary" onPress={() => router.push("/sign-in")}>');
-    expect(signInScreen).not.toContain('<Text className="font-semibold text-primary" onPress={() => router.push("/sign-up")}>');
+    expect(signUpScreen).not.toContain(
+      '<Text className="font-semibold text-primary" onPress={() => router.push("/sign-in")}>',
+    );
+    expect(signInScreen).not.toContain(
+      '<Text className="font-semibold text-primary" onPress={() => router.push("/sign-up")}>',
+    );
     expect(signUpScreen).toContain('<TouchableOpacity onPress={() => router.push("/sign-in")}>');
     expect(signInScreen).toContain('<TouchableOpacity onPress={() => router.push("/sign-up")}>');
   });
 
-  it("αποφεύγει nested touchable κάρτες στη λίστα παραγγελιών του web preview", () => {
-    const ordersScreen = readFileSync("/home/ubuntu/horeca_mobile_app/app/(tabs)/orders.tsx", "utf8");
+  it("αποφεύγει nested touchable κάρτες στη λίστα παραγγελιών", () => {
+    const ordersScreen = readFileSync(path.join(root, "app/(tabs)/orders.tsx"), "utf8");
 
-    expect(ordersScreen).toContain('{recentOrders.map((order) => (');
-    expect(ordersScreen).toContain('<View key={order.id} className="rounded-[24px] border border-border bg-surface p-4">');
+    expect(ordersScreen).toContain("{recentOrders.map((order) => (");
+    expect(ordersScreen).toContain(
+      '<View key={order.id} className="rounded-[24px] border border-border bg-surface p-4">',
+    );
     expect(ordersScreen).toContain('<TouchableOpacity className="rounded-full bg-primary px-4 py-2">');
-    expect(ordersScreen).not.toContain('<TouchableOpacity key={order.id} className="rounded-[24px] border border-border bg-surface p-4">');
+    expect(ordersScreen).not.toContain(
+      '<TouchableOpacity key={order.id} className="rounded-[24px] border border-border bg-surface p-4">',
+    );
   });
 
-  it("χρησιμοποιεί standard SafeAreaProvider wiring στο root layout για σταθερότερο web unmount behavior", () => {
-    const rootLayout = readFileSync("/home/ubuntu/horeca_mobile_app/app/_layout.tsx", "utf8");
+  it("χρησιμοποιεί standard SafeAreaProvider wiring στο root layout", () => {
+    const rootLayout = readFileSync(path.join(root, "app/_layout.tsx"), "utf8");
 
     expect(rootLayout).toContain('import "../global.css";');
-    expect(rootLayout).toContain('<SafeAreaProvider initialMetrics={providerInitialMetrics}>');
+    expect(rootLayout).toContain("<SafeAreaProvider initialMetrics={providerInitialMetrics}>");
     expect(rootLayout).not.toContain("subscribeSafeAreaInsets");
     expect(rootLayout).not.toContain("SafeAreaFrameContext.Provider");
     expect(rootLayout).not.toContain("SafeAreaInsetsContext.Provider");

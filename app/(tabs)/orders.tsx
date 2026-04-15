@@ -1,22 +1,12 @@
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { recentOrders } from "@/lib/mocks/horeca";
-
-function getStatusClasses(status: string) {
-  switch (status) {
-    case "Ολοκληρώθηκε":
-      return "bg-success/10 text-success";
-    case "Καθ' οδόν":
-      return "bg-primary/10 text-primary";
-    case "Σε επεξεργασία":
-      return "bg-warning/10 text-warning";
-    default:
-      return "bg-surface text-muted";
-  }
-}
+import { getOrderStatusClasses } from "@/lib/order-status-styles";
+import { useRecentOrdersQuery } from "@/lib/horeca-queries";
 
 export default function OrdersScreen() {
+  const { data: recentOrders = [] } = useRecentOrdersQuery({ limit: 20 });
+
   return (
     <ScreenContainer className="px-5" containerClassName="bg-background">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
@@ -48,7 +38,7 @@ export default function OrdersScreen() {
                     <Text className="text-base font-semibold text-foreground">{order.supplierName}</Text>
                     <Text className="text-sm text-muted">{order.id} · {order.itemCount} είδη</Text>
                   </View>
-                  <View className={`rounded-full px-3 py-2 ${getStatusClasses(order.status)}`}>
+                  <View className={`rounded-full px-3 py-2 ${getOrderStatusClasses(order.status)}`}>
                     <Text className="text-xs font-semibold">{order.status}</Text>
                   </View>
                 </View>
