@@ -66,8 +66,44 @@ export const orders = sqliteTable(
   (t) => [index("orders_buyer_idx").on(t.buyerId)],
 );
 
-export const usersRelations = relations(users, ({ many }) => ({
+/**
+ * Buyer subscription. 1-to-1 με user (ένα active plan ανά user). Κρατάμε
+ * renewsAt/canceledAt/trialEndsAt σαν nullable timestamps ώστε το backend να
+ * υπολογίζει expiry χωρίς να εξαρτάται από external billing (mock-first).
+ *
+ * Όταν αργότερα μπει RevenueCat/StoreKit, το `plan` και τα timestamps θα
+ * γράφονται από webhook — το client contract μένει ίδιο.
+ */
+export const subscriptions = sqliteTable(
+  "subscriptions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .unique()
+      .references(() => users.id, { onDelete: "cascade" }),
+    plan: text("plan").notNull(), // free | pro
+    status: text("status").notNull(), // active | canceled | expired | trialing
+    renewsAt: integer("renews_at", { mode: "timestamp_ms" }),
+    canceledAt: integer("canceled_at", { mode: "timestamp_ms" }),
+    trialEndsAt: integer("trial_ends_at", { mode: "timestamp_ms" }),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index("subscriptions_user_idx").on(t.userId)],
+);
+
+export const usersRelations = relations(users, ({ many, one }) => ({
   orders: many(orders),
+  subscription: one(subscriptions, {
+    fields: [users.id],
+    references: [subscriptions.userId],
+  }),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  user: one(users, { fields: [subscriptions.userId], references: [users.id] }),
 }));
 
 export const suppliersRelations = relations(suppliers, ({ many }) => ({
@@ -88,3 +124,4 @@ export type UserRow = typeof users.$inferSelect;
 export type SupplierRow = typeof suppliers.$inferSelect;
 export type ProductRow = typeof products.$inferSelect;
 export type OrderRow = typeof orders.$inferSelect;
+export type SubscriptionRow = typeof subscriptions.$inferSelect;

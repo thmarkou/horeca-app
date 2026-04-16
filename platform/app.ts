@@ -5,7 +5,7 @@ import { cors } from "hono/cors";
 import { z } from "zod";
 
 import { db } from "./db/client";
-import { orders, products, suppliers, users } from "./db/schema";
+import { orders, products, subscriptions, suppliers, users } from "./db/schema";
 import { hashPassword, signToken, verifyPassword, verifyToken } from "./lib/auth";
 import { formatAvailability, formatEur, formatOrderStatus } from "./lib/format";
 
@@ -49,6 +49,9 @@ app.post("/api/auth/register", async (c) => {
     .values({ email: normalized, passwordHash, name: name.trim(), role })
     .returning();
   if (!row) return c.json({ error: "Could not create user" }, 500);
+  // Auto-enroll σε free plan ώστε κάθε authenticated user να έχει πάντα
+  // subscription record. Το UI μετά διαβάζει απλά το plan/status.
+  await db.insert(subscriptions).values({ userId: row.id, plan: "free", status: "active" });
   const token = await signToken(row.id, row.email, row.role);
   return c.json({
     app_session_id: token,
@@ -589,6 +592,148 @@ app.get("/api/supplier/operational-summary", async (c) => {
     lowStockItems: Number(lowStock?.c ?? 0),
     todayRevenue: formatEur(revenue),
   });
+});
+
+// ─── Subscription (buyer-funded, 2 tiers: free + pro) ──────────────────────
+//
+// Το plan είναι source of truth για feature gating. Όταν μπει RevenueCat /
+// StoreKit, το activate/cancel θα καλείται από webhook αντί για dev endpoint —
+// ο client contract (`GET /api/me/subscription`) παραμένει σταθερός.
+
+const SUBSCRIPTION_PLANS = ["free", "pro"] as const;
+const SUBSCRIPTION_STATUSES = ["active", "canceled", "expired", "trialing"] as const;
+
+type SubscriptionPlan = (typeof SUBSCRIPTION_PLANS)[number];
+type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
+
+/**
+ * Public-facing subscription shape. Τα timestamps βγαίνουν ως ISO strings
+ * ώστε να είναι safe σε JSON (το RN JSON.parse κρατά strings, όχι Dates).
+ * `isPro` είναι υπολογιζόμενο ώστε ο client να μην χρειάζεται να ξέρει
+ * το internal mapping πριν ενεργοποιήσει gated features.
+ */
+function mapSubscriptionRow(row: {
+  plan: string;
+  status: string;
+  renewsAt: Date | null;
+  canceledAt: Date | null;
+  trialEndsAt: Date | null;
+  updatedAt: Date;
+}) {
+  const plan = (SUBSCRIPTION_PLANS as readonly string[]).includes(row.plan)
+    ? (row.plan as SubscriptionPlan)
+    : "free";
+  const status = (SUBSCRIPTION_STATUSES as readonly string[]).includes(row.status)
+    ? (row.status as SubscriptionStatus)
+    : "active";
+  // canceled = ενεργό μέχρι το renewsAt· expired = τελείωσε.
+  const isPro = plan === "pro" && (status === "active" || status === "trialing" || status === "canceled");
+  return {
+    plan,
+    status,
+    isPro,
+    renewsAt: row.renewsAt?.toISOString() ?? null,
+    canceledAt: row.canceledAt?.toISOString() ?? null,
+    trialEndsAt: row.trialEndsAt?.toISOString() ?? null,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Επιστρέφει (και lazy-creates) το subscription record του authenticated user.
+ * Το auto-create είναι safety net για users που υπήρχαν πριν το S1 migration.
+ */
+async function getOrCreateSubscription(userId: number) {
+  const [existing] = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.userId, userId))
+    .limit(1);
+  if (existing) return existing;
+  const [created] = await db
+    .insert(subscriptions)
+    .values({ userId, plan: "free", status: "active" })
+    .returning();
+  if (!created) throw new Error("Could not create subscription");
+  return created;
+}
+
+app.get("/api/me/subscription", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const row = await getOrCreateSubscription(userId);
+  return c.json({ subscription: mapSubscriptionRow(row) });
+});
+
+// ─── Dev-only endpoints για το mock-billing flow ───────────────────────────
+//
+// Ενεργοποιούνται μόνο όταν NODE_ENV !== "production" ώστε να μη γίνει ποτέ
+// deploy σε live server χωρίς hard gate. Αντικαθίστανται από RevenueCat
+// webhooks όταν μπει το πραγματικό billing (μετά το TestFlight).
+
+const devActivateBody = z.object({
+  plan: z.enum(["pro"]).default("pro"),
+  // Μήνες μέχρι το renewal — default 1 (monthly). Το yearly plan θα στέλνει 12.
+  months: z.number().int().min(1).max(24).default(1),
+});
+
+function assertDevEnv(c: Context) {
+  if (process.env.NODE_ENV === "production") {
+    return c.json({ error: "Not available in production" }, 404);
+  }
+  return null;
+}
+
+app.post("/api/dev/subscription/activate", async (c) => {
+  const forbidden = assertDevEnv(c);
+  if (forbidden) return forbidden;
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+  const parsed = devActivateBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body" }, 400);
+  }
+  const now = new Date();
+  const renewsAt = new Date(now);
+  renewsAt.setMonth(renewsAt.getMonth() + parsed.data.months);
+
+  await getOrCreateSubscription(userId); // ensure row exists
+  const [updated] = await db
+    .update(subscriptions)
+    .set({
+      plan: parsed.data.plan,
+      status: "active",
+      renewsAt,
+      canceledAt: null,
+      trialEndsAt: null,
+      updatedAt: now,
+    })
+    .where(eq(subscriptions.userId, userId))
+    .returning();
+  if (!updated) return c.json({ error: "Could not activate" }, 500);
+  return c.json({ subscription: mapSubscriptionRow(updated) });
+});
+
+app.post("/api/dev/subscription/cancel", async (c) => {
+  const forbidden = assertDevEnv(c);
+  if (forbidden) return forbidden;
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+  // «Cancel» σε SaaS λογική: ο user παραμένει pro μέχρι το renewsAt, αλλά δεν
+  // ανανεώνεται. Αν δεν υπάρχει renewsAt (πχ free), καθαρίζουμε σε expired.
+  const sub = await getOrCreateSubscription(userId);
+  const now = new Date();
+  const nextStatus: SubscriptionStatus =
+    sub.plan === "pro" && sub.renewsAt && sub.renewsAt > now ? "canceled" : "expired";
+  const [updated] = await db
+    .update(subscriptions)
+    .set({ status: nextStatus, canceledAt: now, updatedAt: now })
+    .where(eq(subscriptions.userId, userId))
+    .returning();
+  if (!updated) return c.json({ error: "Could not cancel" }, 500);
+  return c.json({ subscription: mapSubscriptionRow(updated) });
 });
 
 export { app };

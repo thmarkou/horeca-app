@@ -20,7 +20,7 @@ async function run() {
     suppliers: mockSuppliers,
   } = await import("../lib/mocks/horeca");
 
-  const { users, suppliers, products, orders } = schema;
+  const { users, suppliers, products, orders, subscriptions } = schema;
 
   function mockAvailabilityToDb(label: string): "immediate" | "limited" {
     return label === "Περιορισμένο" ? "limited" : "immediate";
@@ -41,6 +41,7 @@ async function run() {
   await db.delete(orders);
   await db.delete(products);
   await db.delete(suppliers);
+  await db.delete(subscriptions);
   await db.delete(users);
 
   console.log("[seed] users…");
@@ -66,6 +67,15 @@ async function run() {
     .returning();
 
   if (!buyer || !supplierUser) throw new Error("Failed to insert seed users");
+
+  console.log("[seed] subscriptions (buyer=free, supplier=free)…");
+  // Όλοι ξεκινούν στο free plan. Το dev-only activate endpoint (βλ.
+  // /api/dev/subscription/activate) ανεβάζει σε pro όταν θέλουμε να δείξουμε
+  // gated features σε demo.
+  await db.insert(subscriptions).values([
+    { userId: buyer.id, plan: "free", status: "active" },
+    { userId: supplierUser.id, plan: "free", status: "active" },
+  ]);
 
   console.log("[seed] suppliers & products…");
   for (const s of mockSuppliers) {

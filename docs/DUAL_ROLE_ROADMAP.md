@@ -139,9 +139,39 @@
 
 ---
 
-## 8. Σημείωση για συνδρομές (μελλοντικά)
+## 8. Φάση S — Subscription (buyer-funded, 2 tiers)
 
-Η χρέωση (buyer, supplier, ή commission) είναι **επιχειρηματική** — το app απλά θα διαβάζει `subscription` / `plan` από το API και θα κρύβει/δείχνει features. Δεν μπλοκάρει τις φάσεις A–D.
+**Επιχειρηματική απόφαση που πάρθηκε:** Μοντέλο **A (buyer-funded SaaS)** με **2 tiers** (Δωρεάν + Pro). Pricing anchor: **€9,90 / μήνα** ή **€89 / έτος** (-25%). Mock-first billing flow — όταν φτάσουμε TestFlight αντικαθίσταται με RevenueCat + StoreKit (15% Apple Small Business Program). Ο client contract παραμένει σταθερός.
+
+### Gating matrix (single source of truth: `lib/subscription.ts`)
+
+| Feature | Δωρεάν | Pro | FeatureSet key |
+|---|:-:|:-:|---|
+| Παραγγελίες / μήνα | 10 | ∞ | `maxOrdersPerMonth` |
+| Αποθηκευμένοι προμηθευτές | 3 | ∞ | `maxSavedSuppliers` |
+| Καταστήματα | 1 | 5 | `maxLocations` |
+| Team seats | 1 | 5 | `maxTeamSeats` |
+| Ιστορικό παραδόσεων | 30 ημέρες | Πλήρες | `historyWindowDays` |
+| Εξαγωγή PDF / CSV | — | ✓ | `canExportHistory` |
+| Συγκριτικά κόστους | — | ✓ | `canCompareCosts` |
+| Price alerts & ειδοποιήσεις αποθέματος | — | ✓ | `canSetPriceAlerts` |
+| Προτεραιότητα στην υποστήριξη | — | ✓ | `prioritySupport` |
+
+### Φάσεις
+
+- [x] **S1. Backend.** Νέο `subscriptions` table (1-to-1 με user, cascade delete, plan/status/renewsAt/canceledAt/trialEndsAt). `GET /api/me/subscription` (lazy auto-create) + dev-only `POST /api/dev/subscription/{activate,cancel}` πίσω από `assertDevEnv` guard (`NODE_ENV !== "production"`). Auto-enrolment σε `free` στο `/api/auth/register`. Seed περιλαμβάνει subscription rows για demo accounts.
+- [x] **S2. Client foundation** (`lib/subscription.ts`). `Subscription` type, `useSubscriptionQuery` με 401/403 fallback σε `DEFAULT_FREE_SUBSCRIPTION` (κανένα null check στο UI), `useFeatures()` helper, πλήρες `FeatureSet` matrix, `PLAN_CATALOG` με τιμές & bullets, `useActivateProMutation`, `useCancelSubscriptionMutation`.
+- [x] **S3. UI.** Νέα `app/subscription.tsx` (current plan card, billing cycle toggle monthly/yearly, plan comparison cards με «Τρέχον»/«Προτεινόμενο» badges, upgrade CTA, destructive cancel με Alert.alert, legal fine print για mock flow). Το buyer `account.tsx` αντικατέστησε το «Δωρεάν demo» placeholder με πραγματικό `SubscriptionCard` που διαβάζει το real plan και linkάρει στην οθόνη.
+- [x] **S4. Pilot gating.** Reusable `<GatedAction>` component (single decision point: features flag → callback ή paywall redirect σε `/subscription` με Alert). Pilot στο buyer orders tab («Εξαγωγή ιστορικού», `canExportHistory`). Lock badge + a11y label «(απαιτεί Pro)» μόνο όταν locked.
+- [ ] **S5. Enforcement των υπόλοιπων gates** (επόμενο cycle, ανά feature όταν χτίζεται):
+  - Backend monthly order counter + 402 στο 11ο για free buyers· buyer UI «X/10 παραγγελίες αυτό το μήνα» στο orders tab.
+  - Favorites: cap στους 3 + paywall στο 4ο για free.
+  - Ιστορικό: filter παραγγελιών με `historyWindowDays` (free βλέπει τελευταίες 30 ημέρες, οι παλαιότερες πίσω από paywall row).
+  - Multi-location & team seats: όταν χτιστούν οι αντίστοιχες οθόνες (δεν υπάρχουν ακόμη — δεν έχει νόημα να gate-άρουμε ανύπαρκτο feature).
+  - Price alerts & cost comparison: όταν χτιστούν τα features.
+- [ ] **S6. Πραγματικό billing.** RevenueCat integration πριν TestFlight: `react-native-purchases` SDK, products config στο App Store Connect (monthly + yearly pro), webhook → `POST /api/webhooks/revenuecat` που ενημερώνει το `subscriptions` table. Τα dev endpoints απενεργοποιούνται αυτόματα από το production env guard.
+
+**Παράδοση τώρα:** Demo-ready upgrade flow. Buyer βλέπει πραγματικό plan badge, ανοίγει την οθόνη συνδρομής, αναβαθμίζει σε Pro (mock), τα κλειδωμένα features ξεκλειδώνουν χωρίς restart.
 
 ---
 

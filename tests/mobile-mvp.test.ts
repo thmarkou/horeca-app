@@ -531,6 +531,118 @@ describe("Horeca Source mobile MVP", () => {
     expect(catalog).toContain("Επεξεργασία");
   });
 
+  it("S1: backend subscription schema + endpoints με lazy auto-create", () => {
+    const schema = readFileSync(path.join(root, "platform/db/schema.ts"), "utf8");
+    const platform = readFileSync(path.join(root, "platform/app.ts"), "utf8");
+    const seed = readFileSync(path.join(root, "scripts/seed-platform.ts"), "utf8");
+
+    // Table με unique userId (1-to-1) + cascade delete.
+    expect(schema).toContain('export const subscriptions = sqliteTable(');
+    expect(schema).toMatch(/userId: integer\("user_id"\)[\s\S]{0,120}\.unique\(\)/);
+    expect(schema).toContain('onDelete: "cascade"');
+    expect(schema).toContain("type SubscriptionRow");
+
+    // Public endpoint + dev-only activate/cancel. Το prod guard τα σκοτώνει
+    // όταν NODE_ENV === production — δεν χρειάζεται να κάνουμε ξεχωριστό
+    // ssl check στο test αφού ο path assertion επιβεβαιώνει την ύπαρξη.
+    expect(platform).toContain('app.get("/api/me/subscription"');
+    expect(platform).toContain('app.post("/api/dev/subscription/activate"');
+    expect(platform).toContain('app.post("/api/dev/subscription/cancel"');
+    expect(platform).toContain("assertDevEnv");
+    expect(platform).toContain("getOrCreateSubscription");
+
+    // Auto-enroll στο register ώστε κάθε user να έχει row.
+    expect(platform).toMatch(/db\.insert\(subscriptions\)\.values\(\{ userId: row\.id, plan: "free"/);
+
+    // Seed επίσης δίνει rows και στα demo accounts.
+    expect(seed).toContain("db.delete(subscriptions)");
+    expect(seed).toMatch(/subscriptions[\s\S]*buyer\.id[\s\S]*plan: "free"/);
+  });
+
+  it("S2: client subscription module εκθέτει query, mutations και features helper", () => {
+    const sub = readFileSync(path.join(root, "lib/subscription.ts"), "utf8");
+
+    expect(sub).toContain("export function useSubscriptionQuery");
+    expect(sub).toContain("export function useActivateProMutation");
+    expect(sub).toContain("export function useCancelSubscriptionMutation");
+    expect(sub).toContain("export function useFeatures");
+    expect(sub).toContain("export function getFeaturesForSubscription");
+
+    // Single source of truth για tier limits — ολόκληρο το αρχικό matrix
+    // (model A, 2 tiers) πρέπει να αντανακλάται σε FeatureSet keys.
+    expect(sub).toContain("maxOrdersPerMonth");
+    expect(sub).toContain("maxSavedSuppliers");
+    expect(sub).toContain("maxLocations");
+    expect(sub).toContain("maxTeamSeats");
+    expect(sub).toContain("historyWindowDays");
+    expect(sub).toContain("canExportHistory");
+    expect(sub).toContain("canSetPriceAlerts");
+    expect(sub).toContain("canCompareCosts");
+    expect(sub).toContain("prioritySupport");
+
+    // Free limits — όχι «απεριόριστα» πουθενά εκτός όπου ορίστηκε ρητά.
+    expect(sub).toMatch(/maxOrdersPerMonth: 10/);
+    expect(sub).toMatch(/maxSavedSuppliers: 3/);
+    expect(sub).toMatch(/maxLocations: 1/);
+    expect(sub).toMatch(/maxTeamSeats: 1/);
+    expect(sub).toMatch(/historyWindowDays: 30/);
+
+    // Pro limits — multi-location 5, team seats 5, υπόλοιπα Infinity/true.
+    expect(sub).toMatch(/maxLocations: 5/);
+    expect(sub).toMatch(/maxTeamSeats: 5/);
+
+    // 2 tiers exactly — το PLAN_CATALOG πρέπει να έχει free + pro.
+    expect(sub).toContain('id: "free"');
+    expect(sub).toContain('id: "pro"');
+    expect(sub).toContain("10 παραγγελίες");
+    expect(sub).toContain("Συγκριτικά κόστους");
+
+    // Auth fallback: αν 401/403, ο client επιστρέφει default free αντί να σκάσει.
+    expect(sub).toContain("DEFAULT_FREE_SUBSCRIPTION");
+    expect(sub).toMatch(/e\.status === 401 \|\| e\.status === 403/);
+  });
+
+  it("S3: subscription screen + buyer account integration", () => {
+    const screen = readFileSync(path.join(root, "app/subscription.tsx"), "utf8");
+    const account = readFileSync(path.join(root, "app/(tabs)/account.tsx"), "utf8");
+
+    // Plan comparison + billing cycle toggle.
+    expect(screen).toContain("PLAN_CATALOG");
+    expect(screen).toContain("BillingCycleToggle");
+    expect(screen).toContain("Μηνιαίο");
+    expect(screen).toContain("Ετήσιο");
+
+    // Upgrade + cancel wired σε mutations (όχι direct fetch).
+    expect(screen).toContain("useActivateProMutation");
+    expect(screen).toContain("useCancelSubscriptionMutation");
+    // Cancel χρησιμοποιεί destructive alert για consent.
+    expect(screen).toContain('"destructive"');
+
+    // Buyer account δείχνει πραγματικό plan badge + link στη συνδρομή.
+    expect(account).toContain("useSubscriptionQuery");
+    expect(account).toContain('router.push("/subscription")');
+    expect(account).toContain("SubscriptionCard");
+  });
+
+  it("S4: feature gating — GatedAction + εξαγωγή ιστορικού κλειδωμένο στο free", () => {
+    const gated = readFileSync(path.join(root, "components/ui/gated-action.tsx"), "utf8");
+    const orders = readFileSync(path.join(root, "app/(tabs)/orders.tsx"), "utf8");
+
+    // Η gating απόφαση παίρνεται μέσα στο component από το features helper —
+    // έτσι δεν γράφουμε if/else σε κάθε screen.
+    expect(gated).toContain("useFeatures");
+    expect(gated).toContain("features[feature]");
+    // Unlocked → calls callback. Locked → paywall redirect σε /subscription.
+    expect(gated).toContain("onUnlockedPress()");
+    expect(gated).toContain('router.push("/subscription")');
+    // Visual Pro badge μόνο όταν locked.
+    expect(gated).toMatch(/!isUnlocked[\s\S]{0,600}Pro</);
+
+    // Pilot: orders tab διαθέτει εξαγωγή ιστορικού πίσω από canExportHistory.
+    expect(orders).toContain('feature="canExportHistory"');
+    expect(orders).toContain("Εξαγωγή ιστορικού");
+  });
+
   it("χρησιμοποιεί standard SafeAreaProvider wiring στο root layout", () => {
     const rootLayout = readFileSync(path.join(root, "app/_layout.tsx"), "utf8");
 

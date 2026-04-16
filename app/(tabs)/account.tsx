@@ -3,16 +3,20 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
 import * as Api from "@/lib/_core/api";
 import * as Auth from "@/lib/_core/auth";
 import { getFirstName } from "@/lib/greeting";
+import { useSubscriptionQuery, type Subscription } from "@/lib/subscription";
 
 export default function AccountScreen() {
   const router = useRouter();
   const colors = useColors();
   const [user, setUser] = useState<Auth.User | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+
+  const { data: subscription, isLoading: isLoadingSubscription } = useSubscriptionQuery();
 
   const load = useCallback(async () => {
     setUser(await Auth.getUserInfo());
@@ -42,7 +46,7 @@ export default function AccountScreen() {
           <View className="gap-2">
             <Text className="text-[28px] font-bold leading-8 text-foreground">Λογαριασμός</Text>
             <Text className="text-base leading-6 text-muted">
-              Στοιχεία καταστήματος, ρόλος και έξοδος από την εφαρμογή.
+              Στοιχεία καταστήματος, συνδρομή και έξοδος από την εφαρμογή.
             </Text>
           </View>
 
@@ -66,18 +70,11 @@ export default function AccountScreen() {
             </View>
           </View>
 
-          <View className="rounded-[28px] border border-border bg-background p-5 gap-3">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-lg font-bold text-foreground">Συνδρομή</Text>
-              <View className="rounded-full bg-primary/10 px-3 py-1">
-                <Text className="text-xs font-semibold text-primary">Δωρεάν demo</Text>
-              </View>
-            </View>
-            <Text className="text-sm leading-6 text-muted">
-              Αυτή τη στιγμή έχεις πρόσβαση σε όλες τις λειτουργίες καταστήματος. Η διαχείριση
-              πληρωμών και αναβαθμίσεων θα ενεργοποιηθεί πριν τη διάθεση στο App Store.
-            </Text>
-          </View>
+          <SubscriptionCard
+            subscription={subscription}
+            isLoading={isLoadingSubscription}
+            onPress={() => router.push("/subscription")}
+          />
 
           <TouchableOpacity
             onPress={handleSignOut}
@@ -97,6 +94,58 @@ export default function AccountScreen() {
         </View>
       </ScrollView>
     </ScreenContainer>
+  );
+}
+
+function SubscriptionCard({
+  subscription,
+  isLoading,
+  onPress,
+}: {
+  subscription: Subscription | undefined;
+  isLoading: boolean;
+  onPress: () => void;
+}) {
+  const colors = useColors();
+  const isPro = subscription?.isPro ?? false;
+
+  const badgeClasses = isPro
+    ? "rounded-full bg-success/10 px-3 py-1"
+    : "rounded-full bg-primary/10 px-3 py-1";
+  const badgeTextClasses = isPro
+    ? "text-xs font-semibold text-success"
+    : "text-xs font-semibold text-primary";
+  const badgeLabel = isPro ? "Pro" : "Δωρεάν";
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel="Άνοιγμα οθόνης συνδρομής"
+      className="gap-3 rounded-[28px] border border-border bg-background p-5"
+    >
+      <View className="flex-row items-center justify-between gap-3">
+        <Text className="text-lg font-bold text-foreground">Συνδρομή</Text>
+        <View className={badgeClasses}>
+          <Text className={badgeTextClasses}>{badgeLabel}</Text>
+        </View>
+      </View>
+      {isLoading ? (
+        <ActivityIndicator color={colors.muted} />
+      ) : (
+        <Text className="text-sm leading-6 text-muted">
+          {isPro
+            ? "Έχεις πρόσβαση σε όλα τα premium features. Διαχείριση ή ακύρωση από την οθόνη συνδρομής."
+            : "Ξεκλείδωσε πλήρες ιστορικό, export, price alerts και multi-location με το Pro πλάνο."}
+        </Text>
+      )}
+      <View className="flex-row items-center gap-2 self-start">
+        <Text className="text-sm font-semibold text-primary">
+          {isPro ? "Διαχείριση συνδρομής" : "Δες τα πλάνα"}
+        </Text>
+        <IconSymbol name="arrow.right" size={14} color={colors.primary} />
+      </View>
+    </TouchableOpacity>
   );
 }
 

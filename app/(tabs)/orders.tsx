@@ -1,11 +1,11 @@
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterTabs, type FilterTab } from "@/components/ui/filter-tabs";
-import { IconSymbol } from "@/components/ui/icon-symbol";
+import { GatedAction } from "@/components/ui/gated-action";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
 import { useRecentOrdersQuery } from "@/lib/horeca-queries";
@@ -69,6 +69,21 @@ export default function OrdersScreen() {
           </View>
 
           <FilterTabs filters={filterTabs} active={filter} onChange={setFilter} />
+
+          <GatedAction
+            feature="canExportHistory"
+            label="Εξαγωγή ιστορικού"
+            iconName="arrow.right"
+            variant="outline"
+            paywallTitle="Εξαγωγή μόνο με Pro"
+            paywallMessage="Το Pro ξεκλειδώνει εξαγωγή PDF/CSV για λογιστικό, παρέχοντας και πλήρες ιστορικό χωρίς όριο 30 ημερών."
+            onUnlockedPress={() =>
+              Alert.alert(
+                "Εξαγωγή ιστορικού",
+                "Σύντομα διαθέσιμη. Θα σταλεί στο email του λογαριασμού.",
+              )
+            }
+          />
 
           <View className="gap-3 pb-2">
             {filtered.length === 0 ? (
