@@ -39,6 +39,13 @@ export type OrderStatus = "Νέα" | "Σε επεξεργασία" | "Καθ' ο
 export type Order = {
   id: string;
   supplierName: string;
+  /**
+   * Name of the *other* party in the order from the authenticated user's
+   * perspective. For buyers this equals `supplierName`. For suppliers it is
+   * the buyer (shop) that placed the order. Keeps the UI role-agnostic while
+   * preserving `supplierName` for buyer-side screens that need it explicitly.
+   */
+  counterpartyName: string;
   status: OrderStatus;
   total: string;
   itemCount: number;
@@ -124,6 +131,7 @@ export const recentOrders: Order[] = [
   {
     id: "ord-1042",
     supplierName: "Aegean Coffee Trade",
+    counterpartyName: "Aegean Coffee Trade",
     status: "Σε επεξεργασία",
     total: "146,20€",
     itemCount: 8,
@@ -132,6 +140,7 @@ export const recentOrders: Order[] = [
   {
     id: "ord-1038",
     supplierName: "Fresh Roots Market",
+    counterpartyName: "Fresh Roots Market",
     status: "Καθ' οδόν",
     total: "212,00€",
     itemCount: 14,
@@ -140,6 +149,7 @@ export const recentOrders: Order[] = [
   {
     id: "ord-1031",
     supplierName: "Blue Pack Essentials",
+    counterpartyName: "Blue Pack Essentials",
     status: "Ολοκληρώθηκε",
     total: "89,40€",
     itemCount: 6,

@@ -106,8 +106,8 @@
 
 ### Φάση E — Backend & ασφάλεια (όταν το προϊόν το απαιτεί)
 
-- [ ] **E1.** Endpoints που επιστρέφουν **μόνο** παραγγελίες του supplier X / buyer Y.
-- [ ] **E2.** Σύνδεση `users` ↔ `suppliers` για supplier accounts (ποιος supplier είναι “εγώ”).
+- [x] **E1.** `/api/orders/recent` role-aware: buyer → orders where `buyerId = userId`· supplier → orders where `supplierId = <listing owned by userId>`. Απαντά πλέον και με `counterpartyName` (ο άλλος ρόλος από τη σκοπιά του χρήστη).
+- [x] **E2.** `suppliers.ownerUserId` (ήδη στο schema) χρησιμοποιείται για να ενώσει τον supplier user με το storefront του· seed βάζει τον `supplier@horeca.demo` ως owner του "Aegean Coffee Trade".
 - [ ] **E3.** Rate limiting, HTTPS παραγωγής, μυστικά εκτός repo.
 
 ---

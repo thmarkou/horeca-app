@@ -228,6 +228,48 @@ app.get("/api/orders/recent", async (c) => {
   const userId = await getAuthUserId(c);
   if (!userId) return c.json({ error: "Unauthorized" }, 401);
   const limit = Math.min(100, Math.max(1, Number(c.req.query("limit")) || 20));
+
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u) return c.json({ orders: [] });
+
+  // Role-aware isolation: buyers see orders they placed; suppliers see orders
+  // placed against the supplier storefront they own. `counterpartyName` is the
+  // other party's name — for buyers that's the supplier, for suppliers that's
+  // the buyer (the shop that placed the order).
+  if (u.role === "supplier") {
+    const [listing] = await db
+      .select()
+      .from(suppliers)
+      .where(eq(suppliers.ownerUserId, userId))
+      .limit(1);
+    if (!listing) return c.json({ orders: [] });
+
+    const rows = await db
+      .select({
+        order: orders,
+        supplierName: suppliers.name,
+        buyerName: users.name,
+      })
+      .from(orders)
+      .innerJoin(suppliers, eq(orders.supplierId, suppliers.id))
+      .innerJoin(users, eq(orders.buyerId, users.id))
+      .where(eq(orders.supplierId, listing.id))
+      .orderBy(desc(orders.createdAt))
+      .limit(limit);
+
+    return c.json({
+      orders: rows.map(({ order, supplierName, buyerName }) => ({
+        id: order.publicId,
+        supplierName,
+        counterpartyName: buyerName,
+        status: formatOrderStatus(order.status),
+        total: formatEur(order.totalEur),
+        itemCount: order.itemCount,
+        deliveryWindow: order.deliveryWindow,
+      })),
+    });
+  }
+
   const rows = await db
     .select({
       order: orders,
@@ -238,10 +280,12 @@ app.get("/api/orders/recent", async (c) => {
     .where(eq(orders.buyerId, userId))
     .orderBy(desc(orders.createdAt))
     .limit(limit);
+
   return c.json({
     orders: rows.map(({ order, supplierName }) => ({
       id: order.publicId,
       supplierName,
+      counterpartyName: supplierName,
       status: formatOrderStatus(order.status),
       total: formatEur(order.totalEur),
       itemCount: order.itemCount,

@@ -181,6 +181,27 @@ describe("Horeca Source mobile MVP", () => {
     expect(dashboard).toContain('router.push("/(supplier-tabs)/orders")');
   });
 
+  it("backend: /api/orders/recent φιλτράρει ανά ρόλο (buyer vs supplier)", () => {
+    const platformApp = readFileSync(path.join(root, "platform/app.ts"), "utf8");
+
+    expect(platformApp).toContain('if (u.role === "supplier")');
+    expect(platformApp).toContain("eq(suppliers.ownerUserId, userId)");
+    expect(platformApp).toContain("eq(orders.supplierId, listing.id)");
+    expect(platformApp).toContain("eq(orders.buyerId, userId)");
+    expect(platformApp).toContain("counterpartyName: buyerName");
+    expect(platformApp).toContain("counterpartyName: supplierName");
+  });
+
+  it("supplier screens χρησιμοποιούν counterpartyName (κατάστημα-buyer), όχι supplierName", () => {
+    const dashboard = readFileSync(path.join(root, "app/(supplier-tabs)/index.tsx"), "utf8");
+    const ordersScreen = readFileSync(path.join(root, "app/(supplier-tabs)/orders.tsx"), "utf8");
+
+    expect(dashboard).toContain("order.counterpartyName");
+    expect(ordersScreen).toContain("order.counterpartyName");
+    expect(dashboard).not.toContain("{order.supplierName}");
+    expect(ordersScreen).not.toContain("{order.supplierName}");
+  });
+
   it("supplier orders: φίλτρα ανά κατάσταση με counts και status pills", () => {
     const ordersScreen = readFileSync(path.join(root, "app/(supplier-tabs)/orders.tsx"), "utf8");
 

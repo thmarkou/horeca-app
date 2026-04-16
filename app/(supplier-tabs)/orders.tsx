@@ -121,9 +121,11 @@ export default function SupplierOrdersTabScreen() {
                 >
                   <View className="flex-row items-start justify-between gap-3">
                     <View className="flex-1 gap-1">
-                      <Text className="text-base font-semibold text-foreground">{order.id}</Text>
+                      <Text className="text-base font-semibold text-foreground">
+                        {order.counterpartyName}
+                      </Text>
                       <Text className="text-sm text-muted">
-                        {order.supplierName} · {order.itemCount} είδη
+                        {order.id} · {order.itemCount} είδη
                       </Text>
                     </View>
                     <View className={`rounded-full px-3 py-2 ${getOrderStatusClasses(order.status)}`}>
