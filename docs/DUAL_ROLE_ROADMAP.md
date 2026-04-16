@@ -75,7 +75,7 @@
 - [x] **B1.** Αρχική (`(tabs)/index`): time-aware χαιρετισμός + όνομα χρήστη, avatar initial, hero με σωστά CTAs (Νέα παραγγελία / Επανάληψη), γρήγορες ενέργειες (4), KPI strip από `recentOrders`, empty state χωρίς παραγγελίες, συνέπεια spacing/ιεραρχίας.
 - [ ] **B2.** Λίστα προμηθευτών / προφίλ προμηθευτή: συνέπεια με cards, verified badge, σαφή CTAs.
 - [x] **B2/B3.** Παραγγελίες buyer: φίλτρα Ενεργές/Ιστορικό/Όλες με counts, empty states ανά φίλτρο, κάρτες με Λεπτομέρειες/Επανάληψη (χωρίς nested touchable), δυναμικό `order-detail` που διαβάζει `id` από `useLocalSearchParams` και χρησιμοποιεί το ίδιο query cache με τη λίστα.
-- [ ] **B4.** Λογαριασμός: εταιρεία, ρόλος, έξοδος, (μελλοντικά) συνδρομή.
+- [x] **B4.** Λογαριασμός buyer: avatar, όνομα/email/ρόλος από SecureStore, κάρτα συνδρομής ("Δωρεάν demo" — honest placeholder), έξοδος μέσω `Api.signOut()`. Καμία hardcoded demo επιχείρηση, καμία sign-in/sign-up CTA σε authenticated οθόνη, χωρίς supplier snapshot.
 
 **Παράδοση:** Ροή buyer “demo‑ready” για demo σε πελάτη (χωρίς απαραίτητα νέα backend features).
 

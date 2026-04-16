@@ -169,6 +169,19 @@ describe("Horeca Source mobile MVP", () => {
     expect(homeScreen).toContain("Επισκόπηση");
   });
 
+  it("buyer account: πραγματικός χρήστης, χωρίς sign-in CTAs, με έξοδο", () => {
+    const accountScreen = readFileSync(path.join(root, "app/(tabs)/account.tsx"), "utf8");
+
+    expect(accountScreen).not.toContain("Urban Roast");
+    expect(accountScreen).not.toContain('router.push("/sign-in")');
+    expect(accountScreen).not.toContain('router.push("/sign-up")');
+    expect(accountScreen).not.toContain("Supplier snapshot");
+    expect(accountScreen).not.toContain("useSupplierOperationalSummaryQuery");
+    expect(accountScreen).toContain("Auth.getUserInfo");
+    expect(accountScreen).toContain("Api.signOut");
+    expect(accountScreen).toContain("Κατάστημα");
+  });
+
   it("χρησιμοποιεί standard SafeAreaProvider wiring στο root layout", () => {
     const rootLayout = readFileSync(path.join(root, "app/_layout.tsx"), "utf8");
 
