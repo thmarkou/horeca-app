@@ -480,6 +480,57 @@ describe("Horeca Source mobile MVP", () => {
     expect(suppliers).not.toContain("index === 0");
   });
 
+  it("C4c: supplier μπορεί να δημιουργήσει/επεξεργαστεί/διαγράψει προϊόν μέσω role-gated endpoints", () => {
+    const platform = readFileSync(path.join(root, "platform/app.ts"), "utf8");
+    const queries = readFileSync(path.join(root, "lib/horeca-queries.ts"), "utf8");
+    const form = readFileSync(path.join(root, "app/supplier-product-form.tsx"), "utf8");
+    const catalog = readFileSync(path.join(root, "app/(supplier-tabs)/catalog.tsx"), "utf8");
+
+    // === Backend: 3 routes + shared gate helper με σωστό role/ownership check ===
+    expect(platform).toContain('app.post("/api/supplier/products"');
+    expect(platform).toContain('app.patch("/api/supplier/products/:id"');
+    expect(platform).toContain('app.delete("/api/supplier/products/:id"');
+    expect(platform).toContain("requireSupplierStorefront");
+    // Supplier role guard είναι στο helper, οπότε ελέγχουμε εκεί.
+    expect(platform).toMatch(/u\.role !== "supplier"[\s\S]{0,150}Supplier role required/);
+    // Ownership guard σε update & delete — χρησιμοποιούν existing.supplierId !== auth.listing.id.
+    const ownershipGuards = platform.match(/existing\.supplierId !== auth\.listing\.id/g) ?? [];
+    expect(ownershipGuards.length).toBeGreaterThanOrEqual(2);
+    // Zod validation: price regex + max lengths.
+    expect(platform).toContain("productPriceField");
+    expect(platform).toContain("/^\\d+(\\.\\d{1,2})?$/");
+    // DELETE επιστρέφει 204 No Content.
+    expect(platform).toMatch(/app\.delete\([\s\S]*?c\.body\(null, 204\)/);
+
+    // === Client hooks: create + update + delete με invalidations ===
+    expect(queries).toContain("export function useCreateSupplierProductMutation");
+    expect(queries).toContain("export function useUpdateSupplierProductMutation");
+    expect(queries).toContain("export function useDeleteSupplierProductMutation");
+    expect(queries).toContain("export type SupplierProductInput");
+    // Shared cache invalidation helper (κρατάει τα buyer views sync).
+    expect(queries).toContain("invalidateProductCaches");
+    // Update & delete κάνουν optimistic update (onMutate + previous snapshot).
+    const onMutateOccurrences = (queries.match(/onMutate: async \(input\)/g) ?? []).length;
+    expect(onMutateOccurrences).toBeGreaterThanOrEqual(3); // toggle + update + delete
+
+    // === Form screen: validation + delete confirmation ===
+    expect(form).toContain("useCreateSupplierProductMutation");
+    expect(form).toContain("useUpdateSupplierProductMutation");
+    expect(form).toContain("useDeleteSupplierProductMutation");
+    expect(form).toContain("PRICE_REGEX");
+    expect(form).toContain("Alert.alert"); // delete confirmation
+    expect(form).toContain("\"destructive\"");
+    // Segmented control για availability (πριν το submit).
+    expect(form).toContain("SegmentedOption");
+    expect(form).toContain("accessibilityState={{ selected");
+
+    // === Catalog screen wiring ===
+    expect(catalog).toContain('router.push("/supplier-product-form")');
+    expect(catalog).toContain('pathname: "/supplier-product-form"');
+    expect(catalog).toContain("Νέο προϊόν");
+    expect(catalog).toContain("Επεξεργασία");
+  });
+
   it("χρησιμοποιεί standard SafeAreaProvider wiring στο root layout", () => {
     const rootLayout = readFileSync(path.join(root, "app/_layout.tsx"), "utf8");
 

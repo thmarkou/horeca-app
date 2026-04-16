@@ -32,6 +32,9 @@ const MAPPING = {
   "shippingbox.fill": "local-shipping",
   "checkmark.circle.fill": "check-circle",
   "plus.circle.fill": "add-circle",
+  "plus": "add",
+  "pencil": "edit",
+  "trash.fill": "delete",
   "arrow.clockwise": "refresh",
   "arrow.right": "arrow-forward",
 } as IconMapping;

@@ -214,6 +214,145 @@ export function useToggleSupplierProductAvailabilityMutation() {
   });
 }
 
+/**
+ * Shared input type για create/update — τα ίδια πεδία, απλώς το update είναι
+ * partial. Το `priceEur` είναι string (decimal e.g. "19.90") και το
+ * `availability` raw status — έτσι αποφεύγουμε re-parsing των localized labels.
+ */
+export type SupplierProductInput = {
+  name: string;
+  unit: string;
+  category: string;
+  priceEur: string;
+  description?: string | null;
+  availability?: "immediate" | "limited";
+};
+
+export type SupplierProductUpdate = Partial<SupplierProductInput>;
+
+/**
+ * Invalidates τόσο την supplier catalog list όσο και τις buyer-facing caches
+ * (featured/list/detail/operational summary) — οι αλλαγές διαδίδονται παντού.
+ * Κοινό helper για τα 3 mutations ώστε να μη διαφοροποιείται η συμπεριφορά.
+ */
+function invalidateProductCaches(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: horecaQueryKeys.supplierOwnProducts });
+  queryClient.invalidateQueries({ queryKey: ["horeca", "featuredProducts"] });
+  queryClient.invalidateQueries({ queryKey: ["horeca", "productsBySupplier"] });
+  queryClient.invalidateQueries({ queryKey: ["horeca", "product"] });
+  queryClient.invalidateQueries({ queryKey: horecaQueryKeys.supplierOperationalSummary });
+}
+
+/**
+ * Δημιουργία νέου προϊόντος. Δεν κάνουμε optimistic insert γιατί χρειαζόμαστε
+ * το server-assigned id — απλώς invalidate στο success για να επαναφορτωθεί
+ * η λίστα με το νέο record.
+ */
+export function useCreateSupplierProductMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: SupplierProductInput) => {
+      return await apiRequest<{ product: SupplierOwnProduct }>("/api/supplier/products", {
+        method: "POST",
+        body: JSON.stringify(input),
+        auth: true,
+      });
+    },
+    onSuccess: () => invalidateProductCaches(queryClient),
+  });
+}
+
+/**
+ * Επεξεργασία προϊόντος με optimistic update πάνω στην cached supplier list.
+ * Rollback on error· invalidate on settled για να διαδώσει στα buyer views.
+ */
+export function useUpdateSupplierProductMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { productId: string; changes: SupplierProductUpdate }) => {
+      return await apiRequest<{ product: SupplierOwnProduct }>(
+        `/api/supplier/products/${input.productId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(input.changes),
+          auth: true,
+        },
+      );
+    },
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: horecaQueryKeys.supplierOwnProducts });
+      const previous = queryClient.getQueryData<SupplierOwnCatalog>(
+        horecaQueryKeys.supplierOwnProducts,
+      );
+      if (previous) {
+        queryClient.setQueryData<SupplierOwnCatalog>(horecaQueryKeys.supplierOwnProducts, {
+          ...previous,
+          products: previous.products.map((p) => {
+            if (p.id !== input.productId) return p;
+            const next: SupplierOwnProduct = { ...p };
+            if (input.changes.name !== undefined) next.name = input.changes.name;
+            if (input.changes.unit !== undefined) next.unit = input.changes.unit;
+            if (input.changes.category !== undefined) next.category = input.changes.category;
+            if (input.changes.description !== undefined) next.description = input.changes.description;
+            if (input.changes.priceEur !== undefined) {
+              next.priceEur = input.changes.priceEur;
+              next.price = `${input.changes.priceEur} €`;
+            }
+            if (input.changes.availability !== undefined) {
+              next.availabilityStatus = input.changes.availability;
+              next.availability =
+                input.changes.availability === "immediate" ? "Άμεσα διαθέσιμο" : "Περιορισμένο";
+            }
+            return next;
+          }),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _input, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(horecaQueryKeys.supplierOwnProducts, context.previous);
+      }
+    },
+    onSettled: () => invalidateProductCaches(queryClient),
+  });
+}
+
+/**
+ * Διαγραφή προϊόντος με optimistic removal από την cached list + rollback on
+ * error. 204 No Content → δεν περιμένουμε JSON body.
+ */
+export function useDeleteSupplierProductMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { productId: string }) => {
+      await apiRequest<void>(`/api/supplier/products/${input.productId}`, {
+        method: "DELETE",
+        auth: true,
+      });
+    },
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: horecaQueryKeys.supplierOwnProducts });
+      const previous = queryClient.getQueryData<SupplierOwnCatalog>(
+        horecaQueryKeys.supplierOwnProducts,
+      );
+      if (previous) {
+        queryClient.setQueryData<SupplierOwnCatalog>(horecaQueryKeys.supplierOwnProducts, {
+          ...previous,
+          products: previous.products.filter((p) => p.id !== input.productId),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _input, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(horecaQueryKeys.supplierOwnProducts, context.previous);
+      }
+    },
+    onSettled: () => invalidateProductCaches(queryClient),
+  });
+}
+
 export function useSupplierOperationalSummaryQuery() {
   return useQuery({
     queryKey: horecaQueryKeys.supplierOperationalSummary,

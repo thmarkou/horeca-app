@@ -342,6 +342,156 @@ const availabilityBody = z.object({
   availability: z.enum(["immediate", "limited"]),
 });
 
+// Shared validation primitives για τα CRUD endpoints. Τα ίδια όρια ισχύουν
+// σε create & update ώστε να μην αποκλίνουν τα error messages.
+const productNameField = z.string().trim().min(1).max(120);
+const productUnitField = z.string().trim().min(1).max(40);
+const productCategoryField = z.string().trim().min(1).max(40);
+// priceEur ως decimal string με μέχρι 2 δεκαδικά — ταιριάζει με το schema
+// (`products.priceEur` text) και με το formatter του client.
+const productPriceField = z.string().trim().regex(/^\d+(\.\d{1,2})?$/, {
+  message: "Τιμή σε μορφή 19.90",
+});
+const productDescriptionField = z.string().trim().max(500).nullable();
+const productAvailabilityField = z.enum(["immediate", "limited"]);
+
+const createProductBody = z.object({
+  name: productNameField,
+  unit: productUnitField,
+  category: productCategoryField,
+  priceEur: productPriceField,
+  description: productDescriptionField.optional(),
+  availability: productAvailabilityField.default("immediate"),
+});
+
+const updateProductBody = z
+  .object({
+    name: productNameField.optional(),
+    unit: productUnitField.optional(),
+    category: productCategoryField.optional(),
+    priceEur: productPriceField.optional(),
+    description: productDescriptionField.optional(),
+    availability: productAvailabilityField.optional(),
+  })
+  .refine((val) => Object.values(val).some((v) => v !== undefined), {
+    message: "At least one field is required",
+  });
+
+/**
+ * Auth + supplier-storefront resolver για τα supplier-only product endpoints.
+ * Discriminated union ώστε τα handlers να γράφονται σαν γραμμική ροή με
+ * σωστό TS narrowing (`if (!auth.ok) return auth.response`).
+ */
+type StorefrontAuth =
+  | { ok: true; listing: typeof suppliers.$inferSelect }
+  | { ok: false; response: Response };
+
+async function requireSupplierStorefront(c: Context): Promise<StorefrontAuth> {
+  const userId = await getAuthUserId(c);
+  if (!userId) return { ok: false, response: c.json({ error: "Unauthorized" }, 401) };
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "supplier") {
+    return { ok: false, response: c.json({ error: "Supplier role required" }, 403) };
+  }
+  const [listing] = await db
+    .select()
+    .from(suppliers)
+    .where(eq(suppliers.ownerUserId, userId))
+    .limit(1);
+  if (!listing) {
+    return {
+      ok: false,
+      response: c.json({ error: "No storefront linked to this supplier" }, 404),
+    };
+  }
+  return { ok: true, listing };
+}
+
+app.post("/api/supplier/products", async (c) => {
+  const auth = await requireSupplierStorefront(c);
+  if (!auth.ok) return auth.response;
+
+  const parsed = createProductBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, 400);
+  }
+
+  const [inserted] = await db
+    .insert(products)
+    .values({
+      supplierId: auth.listing.id,
+      name: parsed.data.name,
+      unit: parsed.data.unit,
+      category: parsed.data.category,
+      priceEur: parsed.data.priceEur,
+      availability: parsed.data.availability,
+      description: parsed.data.description ?? null,
+    })
+    .returning();
+  if (!inserted) return c.json({ error: "Could not create product" }, 500);
+
+  return c.json({ product: mapSupplierProductRow(inserted) }, 201);
+});
+
+app.patch("/api/supplier/products/:id", async (c) => {
+  const auth = await requireSupplierStorefront(c);
+  if (!auth.ok) return auth.response;
+
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) return c.json({ error: "Invalid product id" }, 400);
+
+  const parsed = updateProductBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, 400);
+  }
+
+  // Ownership guard — απαραίτητο πριν το update, ακριβώς όπως στο availability PATCH.
+  const [existing] = await db
+    .select()
+    .from(products)
+    .where(eq(products.id, id))
+    .limit(1);
+  if (!existing || existing.supplierId !== auth.listing.id) {
+    return c.json({ error: "Product not found" }, 404);
+  }
+
+  const [updated] = await db
+    .update(products)
+    .set({
+      ...(parsed.data.name !== undefined && { name: parsed.data.name }),
+      ...(parsed.data.unit !== undefined && { unit: parsed.data.unit }),
+      ...(parsed.data.category !== undefined && { category: parsed.data.category }),
+      ...(parsed.data.priceEur !== undefined && { priceEur: parsed.data.priceEur }),
+      ...(parsed.data.availability !== undefined && { availability: parsed.data.availability }),
+      ...(parsed.data.description !== undefined && { description: parsed.data.description }),
+    })
+    .where(eq(products.id, id))
+    .returning();
+  if (!updated) return c.json({ error: "Could not update product" }, 500);
+
+  return c.json({ product: mapSupplierProductRow(updated) });
+});
+
+app.delete("/api/supplier/products/:id", async (c) => {
+  const auth = await requireSupplierStorefront(c);
+  if (!auth.ok) return auth.response;
+
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) return c.json({ error: "Invalid product id" }, 400);
+
+  const [existing] = await db
+    .select()
+    .from(products)
+    .where(eq(products.id, id))
+    .limit(1);
+  if (!existing || existing.supplierId !== auth.listing.id) {
+    return c.json({ error: "Product not found" }, 404);
+  }
+
+  await db.delete(products).where(eq(products.id, id));
+  return c.body(null, 204);
+});
+
 app.patch("/api/supplier/products/:id/availability", async (c) => {
   const userId = await getAuthUserId(c);
   if (!userId) return c.json({ error: "Unauthorized" }, 401);

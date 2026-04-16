@@ -1,7 +1,9 @@
+import { useRouter } from "expo-router";
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { EmptyState } from "@/components/ui/empty-state";
+import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
 import {
   useSupplierOwnProductsQuery,
@@ -50,6 +52,7 @@ function AvailabilityToggle({
 
 export default function SupplierCatalogScreen() {
   const colors = useColors();
+  const router = useRouter();
   const { data, isLoading, isError, refetch } = useSupplierOwnProductsQuery();
   const toggleMutation = useToggleSupplierProductAvailabilityMutation();
 
@@ -65,6 +68,10 @@ export default function SupplierCatalogScreen() {
       ? toggleMutation.variables.productId
       : null;
 
+  const openCreateForm = () => router.push("/supplier-product-form");
+  const openEditForm = (id: string) =>
+    router.push({ pathname: "/supplier-product-form", params: { id } });
+
   return (
     <ScreenContainer className="px-5" containerClassName="bg-background">
       <ScrollView
@@ -72,17 +79,29 @@ export default function SupplierCatalogScreen() {
         contentContainerStyle={{ paddingBottom: 32 }}
       >
         <View className="pt-3 pb-6 gap-6">
-          <View className="gap-2">
-            <Text className="text-[28px] font-bold leading-8 text-foreground">Κατάλογος</Text>
-            <Text className="text-base leading-6 text-muted">
-              {supplierName
-                ? `Τα προϊόντα της ${supplierName} όπως τα βλέπουν οι αγοραστές.`
-                : "Τα προϊόντα της επιχείρησής σου όπως τα βλέπουν οι αγοραστές."}
-            </Text>
-            <Text className="text-sm leading-5 text-muted">
-              Πάτησε στην ετικέτα διαθεσιμότητας κάθε προϊόντος για να την αλλάξεις.
-            </Text>
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1 gap-2">
+              <Text className="text-[28px] font-bold leading-8 text-foreground">Κατάλογος</Text>
+              <Text className="text-base leading-6 text-muted">
+                {supplierName
+                  ? `Τα προϊόντα της ${supplierName} όπως τα βλέπουν οι αγοραστές.`
+                  : "Τα προϊόντα της επιχείρησής σου όπως τα βλέπουν οι αγοραστές."}
+              </Text>
+              <Text className="text-sm leading-5 text-muted">
+                Πάτησε στην ετικέτα διαθεσιμότητας για να την αλλάξεις ή στο μολύβι για επεξεργασία.
+              </Text>
+            </View>
           </View>
+
+          <TouchableOpacity
+            onPress={openCreateForm}
+            accessibilityRole="button"
+            accessibilityLabel="Προσθήκη νέου προϊόντος"
+            className="flex-row items-center justify-center gap-2 rounded-full bg-primary px-4 py-3"
+          >
+            <IconSymbol name="plus" size={18} color={colors.background} />
+            <Text className="text-base font-semibold text-background">Νέο προϊόν</Text>
+          </TouchableOpacity>
 
           {products.length > 0 ? (
             <View className="flex-row gap-3">
@@ -122,7 +141,8 @@ export default function SupplierCatalogScreen() {
             <EmptyState
               icon={{ name: "shippingbox.fill", color: colors.primary }}
               title="Δεν έχεις προϊόντα ακόμη"
-              body="Η προσθήκη και επεξεργασία προϊόντων ενεργοποιείται στο επόμενο βήμα."
+              body="Πρόσθεσε το πρώτο σου προϊόν για να ξεκινήσεις να δέχεσαι παραγγελίες."
+              cta={{ label: "Προσθήκη προϊόντος", onPress: openCreateForm }}
             />
           ) : (
             <View className="gap-3">
@@ -141,13 +161,26 @@ export default function SupplierCatalogScreen() {
                     </View>
                     <Text className="text-base font-bold text-foreground">{product.price}</Text>
                   </View>
-                  <AvailabilityToggle
-                    product={product}
-                    pending={pendingProductId === product.id}
-                    onToggle={(next) =>
-                      toggleMutation.mutate({ productId: product.id, availability: next })
-                    }
-                  />
+                  {/* Availability toggle + edit action σε μία σειρά — κάθε action
+                      είναι αυτόνομο touch target με καθαρό a11y label. */}
+                  <View className="flex-row items-center justify-between gap-2">
+                    <AvailabilityToggle
+                      product={product}
+                      pending={pendingProductId === product.id}
+                      onToggle={(next) =>
+                        toggleMutation.mutate({ productId: product.id, availability: next })
+                      }
+                    />
+                    <TouchableOpacity
+                      onPress={() => openEditForm(product.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Επεξεργασία ${product.name}`}
+                      className="flex-row items-center gap-2 rounded-full border border-border bg-background px-3 py-2"
+                    >
+                      <IconSymbol name="pencil" size={14} color={colors.foreground} />
+                      <Text className="text-xs font-semibold text-foreground">Επεξεργασία</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
             </View>
