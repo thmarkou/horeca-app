@@ -4,6 +4,7 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
+import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
 import * as Auth from "@/lib/_core/auth";
 import { getFirstName, getGreetingForDate } from "@/lib/greeting";
@@ -13,7 +14,6 @@ import {
   useSupplierCategoriesQuery,
   useSuppliersListQuery,
 } from "@/lib/horeca-queries";
-import { getOrderStatusClasses } from "@/lib/order-status-styles";
 
 type QuickAction = {
   key: string;
@@ -290,9 +290,7 @@ export default function HomeScreen() {
                           {order.id} · {order.itemCount} είδη
                         </Text>
                       </View>
-                      <View className={`rounded-full px-3 py-2 ${getOrderStatusClasses(order.status)}`}>
-                        <Text className="text-xs font-semibold">{order.status}</Text>
-                      </View>
+                      <StatusPill status={order.status} />
                     </View>
                     <View className="mt-3 flex-row items-center justify-between">
                       <Text className="text-sm text-muted">{order.deliveryWindow}</Text>

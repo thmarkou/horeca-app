@@ -192,6 +192,31 @@ describe("Horeca Source mobile MVP", () => {
     expect(platformApp).toContain("counterpartyName: supplierName");
   });
 
+  it("StatusPill είναι extracted σε shared component (DRY — καμία inline pill markup)", () => {
+    const statusPillPath = path.join(root, "components/ui/status-pill.tsx");
+    expect(existsSync(statusPillPath), "components/ui/status-pill.tsx should exist").toBe(true);
+
+    const screensUsingPill = [
+      "app/(tabs)/index.tsx",
+      "app/(tabs)/orders.tsx",
+      "app/(supplier-tabs)/index.tsx",
+      "app/(supplier-tabs)/orders.tsx",
+      "app/order-detail.tsx",
+    ];
+
+    for (const rel of screensUsingPill) {
+      const source = readFileSync(path.join(root, rel), "utf8");
+      expect(source, `${rel} should import StatusPill`).toContain(
+        'import { StatusPill } from "@/components/ui/status-pill"',
+      );
+      // Inline pill reconstruction must NOT come back — the shared component is
+      // the only place allowed to render `rounded-full px-3 py-2 + status color`.
+      expect(source, `${rel} should not reconstruct the pill inline`).not.toMatch(
+        /rounded-full[^"`]*getOrderStatusClasses/,
+      );
+    }
+  });
+
   it("supplier screens χρησιμοποιούν counterpartyName (κατάστημα-buyer), όχι supplierName", () => {
     const dashboard = readFileSync(path.join(root, "app/(supplier-tabs)/index.tsx"), "utf8");
     const ordersScreen = readFileSync(path.join(root, "app/(supplier-tabs)/orders.tsx"), "utf8");
@@ -210,7 +235,7 @@ describe("Horeca Source mobile MVP", () => {
     expect(ordersScreen).toContain('{ key: "processing", label: "Σε επεξεργασία" }');
     expect(ordersScreen).toContain('{ key: "onTheWay", label: "Καθ\' οδόν" }');
     expect(ordersScreen).toContain('{ key: "completed", label: "Ολοκληρωμένες" }');
-    expect(ordersScreen).toContain("getOrderStatusClasses(order.status)");
+    expect(ordersScreen).toContain("<StatusPill status={order.status} />");
     expect(ordersScreen).toContain('pathname: "/order-detail", params: { id: order.id }');
   });
 

@@ -2,8 +2,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { StatusPill } from "@/components/ui/status-pill";
 import { useRecentOrdersQuery } from "@/lib/horeca-queries";
-import { getOrderStatusClasses } from "@/lib/order-status-styles";
 
 export default function OrderDetailScreen() {
   const router = useRouter();
@@ -33,11 +33,7 @@ export default function OrderDetailScreen() {
                 <Text className="mt-3 text-base leading-7 text-muted">
                   {order.itemCount} είδη · παράδοση {order.deliveryWindow.toLowerCase()}.
                 </Text>
-                <View
-                  className={`mt-4 self-start rounded-full px-3 py-2 ${getOrderStatusClasses(order.status)}`}
-                >
-                  <Text className="text-xs font-semibold">{order.status}</Text>
-                </View>
+                <StatusPill status={order.status} className="mt-4 self-start" />
               </View>
 
               <View className="rounded-[28px] border border-border bg-background p-5">
