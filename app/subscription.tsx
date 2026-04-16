@@ -6,7 +6,6 @@ import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
 import {
-  isDevEnvironment,
   PLAN_CATALOG,
   PRO_PRICE_MONTHLY_EUR,
   PRO_PRICE_YEARLY_EUR,
@@ -175,20 +174,23 @@ export default function SubscriptionScreen() {
                     ) : null}
                     <Text className="text-base font-semibold text-foreground">Ακύρωση συνδρομής</Text>
                   </TouchableOpacity>
-                  {isDevEnvironment() ? (
-                    <TouchableOpacity
-                      onPress={handleDowngradeNow}
-                      disabled={cancelMutation.isPending}
-                      accessibilityRole="button"
-                      accessibilityLabel="Dev-only: άμεση επιστροφή σε Δωρεάν"
-                      className="flex-row items-center justify-center gap-2 rounded-full border border-dashed border-warning bg-surface px-4 py-3"
-                    >
-                      <IconSymbol name="arrow.clockwise" size={14} color={colors.warning} />
-                      <Text className="text-sm font-semibold text-warning">
-                        Dev: επιστροφή σε Δωρεάν άμεσα
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
+                  {/* Demo shortcut: επιστροφή σε Free άμεσα. Το κανονικό cancel
+                      από πάνω ακολουθεί τη λογική των App Store συνδρομών και
+                      κρατά Pro μέχρι το renewsAt. Το backend endpoint είναι
+                      ήδη dev-only μέσω assertDevEnv, οπότε σε production server
+                      θα επιστρέφει 404 αν καλεστεί. */}
+                  <TouchableOpacity
+                    onPress={handleDowngradeNow}
+                    disabled={cancelMutation.isPending}
+                    accessibilityRole="button"
+                    accessibilityLabel="Demo: άμεση επιστροφή σε Δωρεάν"
+                    className="flex-row items-center justify-center gap-2 rounded-full border border-dashed border-warning bg-surface px-4 py-3"
+                  >
+                    <IconSymbol name="arrow.clockwise" size={14} color={colors.warning} />
+                    <Text className="text-sm font-semibold text-warning">
+                      Demo: επιστροφή σε Δωρεάν άμεσα
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               ) : (
                 <TouchableOpacity

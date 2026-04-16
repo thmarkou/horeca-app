@@ -218,11 +218,3 @@ export function useCancelSubscriptionMutation() {
   });
 }
 
-/**
- * True όταν το app τρέχει σε non-production (πχ Expo dev/TestFlight με
- * demo server). Χρησιμοποιείται ΜΟΝΟ για να δείξουμε dev-only shortcuts στο
- * UI — ποτέ για feature gating. Σε App Store build, `__DEV__` είναι false.
- */
-export function isDevEnvironment(): boolean {
-  return typeof __DEV__ !== "undefined" && __DEV__;
-}
