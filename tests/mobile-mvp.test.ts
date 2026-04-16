@@ -357,6 +357,34 @@ describe("Horeca Source mobile MVP", () => {
     expect(accountScreen).toContain("Κατάστημα");
   });
 
+  it("welcome: role-aware onboarding με δύο value cards και καθαρά CTAs", () => {
+    const welcome = readFileSync(path.join(root, "app/welcome.tsx"), "utf8");
+
+    // Και οι δύο κόσμοι εμφανίζονται σαν value proposition.
+    expect(welcome).toContain("Για καταστήματα");
+    expect(welcome).toContain("Για προμηθευτές");
+
+    // Concrete benefits (όχι generic marketing copy).
+    expect(welcome).toContain("Βρες προμηθευτές και τιμές");
+    expect(welcome).toContain("Επανάλαβε τις καθημερινές σου παραγγελίες");
+    expect(welcome).toContain("Δες νέες παραγγελίες σε πραγματικό χρόνο");
+
+    // CTAs παραμένουν σταθερά: sign-up, sign-in, demo preview.
+    expect(welcome).toContain('router.push("/sign-up")');
+    expect(welcome).toContain('router.push("/sign-in")');
+    expect(welcome).toContain('router.replace("/(tabs)")');
+    expect(welcome).toContain("Ξεκίνα τώρα");
+    expect(welcome).toContain("Έχω ήδη λογαριασμό");
+  });
+
+  it("index route στέλνει authenticated χρήστες στο σωστό root, αλλιώς welcome", () => {
+    const indexRoute = readFileSync(path.join(root, "app/index.tsx"), "utf8");
+
+    expect(indexRoute).toContain("Auth.getUserInfo");
+    expect(indexRoute).toContain("navigateAfterHorecaAuth");
+    expect(indexRoute).toContain('<Redirect href="/welcome" />');
+  });
+
   it("χρησιμοποιεί standard SafeAreaProvider wiring στο root layout", () => {
     const rootLayout = readFileSync(path.join(root, "app/_layout.tsx"), "utf8");
 

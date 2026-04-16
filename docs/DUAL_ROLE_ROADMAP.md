@@ -105,7 +105,7 @@
   - `FilterTabs` — generic `<K extends string>`, καλύπτει 3 buyer + 5 supplier filters με scrollable flag.
   Κάθε ένα έχει regression test που απαγορεύει inline αναδημιουργία. Καθάρισε ~115 γραμμές duplicated JSX.
 - [x] **D2.** Audit & κανονικοποίηση radii: 5 outliers `rounded-[22px]` → `rounded-[24px]` (cart, favorites, suppliers). Το app πλέον χρησιμοποιεί μόνο canonical radii (20/24/28 + 2xl για inputs + full για pills/buttons). Test που πιάνει future drift.
-- [ ] **D3.** Splash / onboarding copy (προαιρετικά) 1 οθόνα "τι κερδίζεις" πριν το sign-in.
+- [x] **D3.** Onboarding (`app/welcome.tsx`): hero με σαφές value prop (δύο κόσμοι σε ένα app) + **δύο role-aware κάρτες** («Για καταστήματα» / «Για προμηθευτές»), κάθε μία με εικονίδιο, tagline και 3 concrete benefits — όχι generic marketing copy. Τα CTAs παραμένουν τρία (Sign-up / Sign-in / Demo preview) σε sticky footer. Το `app/index.tsx` πλέον στέλνει authenticated χρήστες κατευθείαν στο σωστό root μέσω `navigateAfterHorecaAuth`, οπότε το onboarding εμφανίζεται μόνο πριν το sign-in. Regression tests πιάνουν future regressions στο copy και στη δρομολόγηση.
 
 ---
 
