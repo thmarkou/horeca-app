@@ -98,9 +98,14 @@
 
 **Στόχος:** Λιγότερο duplicate code, πιο “premium” look.
 
-- [ ] **D1.** Κοινά components: `SectionHeader`, `StatCard`, `EmptyState`, `ListRow`.
-- [ ] **D2.** Έλεγχος `tailwind` / NativeWind για **ίδια spacing** σε όλες τις οθόνες.
-- [ ] **D3.** Splash / onboarding copy (προαιρετικά) 1 οθόνα “τι κερδίζεις” πριν το sign‑in.
+- [x] **D1.** Κοινά components σε `components/ui/`:
+  - `StatusPill` — αντικατέστησε 5 inline pills (buyer+supplier orders, home, dashboard, detail).
+  - `EmptyState` — αντικατέστησε 4 inline dashed cards.
+  - `MetricTile` — βγήκε από local orisμό μέσα στον supplier dashboard σε shared.
+  - `FilterTabs` — generic `<K extends string>`, καλύπτει 3 buyer + 5 supplier filters με scrollable flag.
+  Κάθε ένα έχει regression test που απαγορεύει inline αναδημιουργία. Καθάρισε ~115 γραμμές duplicated JSX.
+- [x] **D2.** Audit & κανονικοποίηση radii: 5 outliers `rounded-[22px]` → `rounded-[24px]` (cart, favorites, suppliers). Το app πλέον χρησιμοποιεί μόνο canonical radii (20/24/28 + 2xl για inputs + full για pills/buttons). Test που πιάνει future drift.
+- [ ] **D3.** Splash / onboarding copy (προαιρετικά) 1 οθόνα "τι κερδίζεις" πριν το sign-in.
 
 ---
 

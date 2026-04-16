@@ -23,7 +23,7 @@ export default function SuppliersScreen() {
             </Text>
           </View>
 
-          <View className="flex-row items-center gap-3 rounded-[22px] border border-border bg-surface px-4 py-3">
+          <View className="flex-row items-center gap-3 rounded-[24px] border border-border bg-surface px-4 py-3">
             <IconSymbol name="magnifyingglass" size={18} color={colors.muted} />
             <TextInput
               placeholder="Αναζήτηση προμηθευτή ή κατηγορίας"

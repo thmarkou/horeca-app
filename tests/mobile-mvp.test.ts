@@ -192,6 +192,48 @@ describe("Horeca Source mobile MVP", () => {
     expect(platformApp).toContain("counterpartyName: supplierName");
   });
 
+  it("design system: μόνο canonical border radii (20/24/28, 2xl, full) — χωρίς random outliers", () => {
+    // The app standardized on three arbitrary radii (20/24/28) + tailwind's
+    // rounded-2xl (form inputs) + rounded-full (buttons/pills). Any other
+    // bracket radius is a drift signal — catch it here before it spreads.
+    const appFiles = [
+      "app/cart.tsx",
+      "app/catalog.tsx",
+      "app/checkout.tsx",
+      "app/order-detail.tsx",
+      "app/product-detail.tsx",
+      "app/sign-in.tsx",
+      "app/sign-up.tsx",
+      "app/supplier-profile.tsx",
+      "app/welcome.tsx",
+      "app/(tabs)/index.tsx",
+      "app/(tabs)/orders.tsx",
+      "app/(tabs)/suppliers.tsx",
+      "app/(tabs)/favorites.tsx",
+      "app/(tabs)/account.tsx",
+      "app/(supplier-tabs)/index.tsx",
+      "app/(supplier-tabs)/orders.tsx",
+      "app/(supplier-tabs)/account.tsx",
+      "app/(supplier-tabs)/catalog.tsx",
+    ];
+
+    const allowedBracketRadii = new Set(["20px", "24px", "28px"]);
+    const bracketRadiusRegex = /rounded-\[(\d+px)\]/g;
+
+    for (const rel of appFiles) {
+      const filePath = path.join(root, rel);
+      if (!existsSync(filePath)) continue;
+      const source = readFileSync(filePath, "utf8");
+      const matches = Array.from(source.matchAll(bracketRadiusRegex));
+      for (const [, value] of matches) {
+        expect(
+          allowedBracketRadii.has(value),
+          `${rel} uses non-canonical rounded-[${value}] — use 20/24/28`,
+        ).toBe(true);
+      }
+    }
+  });
+
   it("FilterTabs είναι extracted σε shared generic component (buyer & supplier orders)", () => {
     const filterTabsPath = path.join(root, "components/ui/filter-tabs.tsx");
     expect(existsSync(filterTabsPath), "components/ui/filter-tabs.tsx should exist").toBe(true);

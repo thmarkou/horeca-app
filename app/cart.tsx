@@ -20,7 +20,7 @@ export default function CartScreen() {
               Έλεγχος ειδών, χρόνου παράδοσης και συνολικού κόστους πριν την τελική επιβεβαίωση.
             </Text>
 
-            <View className="rounded-[22px] border border-border bg-background p-4">
+            <View className="rounded-[24px] border border-border bg-background p-4">
               <Text className="text-base font-semibold text-foreground">Brazil Santos Espresso Blend</Text>
               <Text className="mt-1 text-sm text-muted">4 τεμ. · 1 κιλό</Text>
               <View className="mt-3 flex-row items-center justify-between">
@@ -29,7 +29,7 @@ export default function CartScreen() {
               </View>
             </View>
 
-            <View className="rounded-[22px] border border-border bg-background p-4">
+            <View className="rounded-[24px] border border-border bg-background p-4">
               <Text className="text-base font-semibold text-foreground">Ποτήρι χάρτινο διπλό 12oz</Text>
               <Text className="mt-1 text-sm text-muted">10 packs · 50 τεμ.</Text>
               <View className="mt-3 flex-row items-center justify-between">

@@ -22,7 +22,7 @@ export default function FavoritesScreen() {
             <Text className="text-lg font-bold text-foreground">Αποθηκευμένοι προμηθευτές</Text>
             <View className="mt-4 gap-3">
               {suppliers.slice(0, 2).map((supplier) => (
-                <TouchableOpacity key={supplier.id} className="rounded-[22px] border border-border bg-background p-4">
+                <TouchableOpacity key={supplier.id} className="rounded-[24px] border border-border bg-background p-4">
                   <Text className="text-base font-semibold text-foreground">{supplier.name}</Text>
                   <Text className="mt-1 text-sm text-muted">
                     {supplier.category} · {supplier.location}
@@ -37,7 +37,7 @@ export default function FavoritesScreen() {
             <Text className="text-lg font-bold text-foreground">Συχνές αγορές</Text>
             <View className="mt-4 gap-3">
               {featuredProducts.slice(0, 2).map((product) => (
-                <View key={product.id} className="rounded-[22px] border border-border bg-surface p-4">
+                <View key={product.id} className="rounded-[24px] border border-border bg-surface p-4">
                   <View className="flex-row items-center justify-between gap-3">
                     <View className="flex-1">
                       <Text className="text-base font-semibold text-foreground">{product.name}</Text>
