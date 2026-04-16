@@ -280,7 +280,7 @@ export default function HomeScreen() {
                 {recentOrders.map((order) => (
                   <TouchableOpacity
                     key={order.id}
-                    onPress={() => router.push("/order-detail")}
+                    onPress={() => router.push({ pathname: "/order-detail", params: { id: order.id } })}
                     className="rounded-[24px] border border-border bg-surface p-4"
                   >
                     <View className="flex-row items-start justify-between gap-3">

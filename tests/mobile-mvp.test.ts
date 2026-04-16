@@ -110,14 +110,33 @@ describe("Horeca Source mobile MVP", () => {
   it("αποφεύγει nested touchable κάρτες στη λίστα παραγγελιών", () => {
     const ordersScreen = readFileSync(path.join(root, "app/(tabs)/orders.tsx"), "utf8");
 
-    expect(ordersScreen).toContain("{recentOrders.map((order) => (");
-    expect(ordersScreen).toContain(
-      '<View key={order.id} className="rounded-[24px] border border-border bg-surface p-4">',
-    );
-    expect(ordersScreen).toContain('<TouchableOpacity className="rounded-full bg-primary px-4 py-2">');
+    // Root της κάρτας είναι View (όχι TouchableOpacity), για να μην έχουμε
+    // nested touchable με τα εσωτερικά κουμπιά (Λεπτομέρειες / Επανάληψη).
+    expect(ordersScreen).toContain('<View key={order.id} className="rounded-[24px] border border-border bg-surface p-4">');
     expect(ordersScreen).not.toContain(
       '<TouchableOpacity key={order.id} className="rounded-[24px] border border-border bg-surface p-4">',
     );
+    expect(ordersScreen).toContain("Επανάληψη");
+  });
+
+  it("υποστηρίζει φίλτρα Ενεργές / Ιστορικό / Όλες στη λίστα παραγγελιών", () => {
+    const ordersScreen = readFileSync(path.join(root, "app/(tabs)/orders.tsx"), "utf8");
+
+    expect(ordersScreen).toContain('useState<OrderFilter>("active")');
+    expect(ordersScreen).toContain('{ key: "active", label: "Ενεργές" }');
+    expect(ordersScreen).toContain('{ key: "history", label: "Ιστορικό" }');
+    expect(ordersScreen).toContain('{ key: "all", label: "Όλες" }');
+  });
+
+  it("περνάει το id στη λεπτομέρεια παραγγελίας αντί για hardcoded route", () => {
+    const ordersScreen = readFileSync(path.join(root, "app/(tabs)/orders.tsx"), "utf8");
+    const homeScreen = readFileSync(path.join(root, "app/(tabs)/index.tsx"), "utf8");
+    const detailScreen = readFileSync(path.join(root, "app/order-detail.tsx"), "utf8");
+
+    expect(ordersScreen).toContain('pathname: "/order-detail", params: { id: order.id }');
+    expect(homeScreen).toContain('pathname: "/order-detail", params: { id: order.id }');
+    expect(detailScreen).toContain('useLocalSearchParams<{ id?: string }>');
+    expect(detailScreen).toContain("orders.find((o) => o.id === id)");
   });
 
   it("επιλέγει σωστό χαιρετισμό ανά ώρα της ημέρας", () => {
