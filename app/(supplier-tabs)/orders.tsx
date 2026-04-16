@@ -1,44 +1,195 @@
 import { useRouter } from "expo-router";
+import { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { IconSymbol } from "@/components/ui/icon-symbol";
+import { useColors } from "@/hooks/use-colors";
 import { useRecentOrdersQuery } from "@/lib/horeca-queries";
+import type { Order, OrderStatus } from "@/lib/mocks/horeca";
+import { getOrderStatusClasses } from "@/lib/order-status-styles";
 
-const TITLE = "\u03a0\u03b1\u03c1\u03b1\u03b3\u03b3\u03b5\u03bb\u03af\u03b5\u03c2";
-const SUB =
-  "\u039d\u03ad\u03b5\u03c2 \u03ba\u03b1\u03b9 \u03b5\u03bd\u03b5\u03c1\u03b3\u03ad\u03c2 \u03c0\u03b1\u03c1\u03b1\u03b3\u03b3\u03b5\u03bb\u03af\u03b5\u03c2 \u03b1\u03c0\u03cc \u03ba\u03b1\u03c4\u03b1\u03c3\u03c4\u03ae\u03bc\u03b1\u03c4\u03b1 \u2014 \u03c0\u03c1\u03bf\u03c4\u03b5\u03c1\u03b1\u03b9\u03cc\u03c4\u03b7\u03c4\u03b1 \u03c3\u03c4\u03bf\u03bd \u03c7\u03c1\u03cc\u03bd\u03bf \u03c0\u03b1\u03c1\u03ac\u03b4\u03bf\u03c3\u03b7\u03c2.";
+type SupplierOrderFilter = "new" | "processing" | "onTheWay" | "completed" | "all";
+
+const FILTERS: ReadonlyArray<{ key: SupplierOrderFilter; label: string }> = [
+  { key: "new", label: "Νέες" },
+  { key: "processing", label: "Σε επεξεργασία" },
+  { key: "onTheWay", label: "Καθ' οδόν" },
+  { key: "completed", label: "Ολοκληρωμένες" },
+  { key: "all", label: "Όλες" },
+];
+
+const STATUS_FOR_FILTER: Record<Exclude<SupplierOrderFilter, "all">, OrderStatus> = {
+  new: "Νέα",
+  processing: "Σε επεξεργασία",
+  onTheWay: "Καθ' οδόν",
+  completed: "Ολοκληρώθηκε",
+};
+
+function matchesFilter(order: Order, filter: SupplierOrderFilter): boolean {
+  if (filter === "all") return true;
+  return order.status === STATUS_FOR_FILTER[filter];
+}
 
 export default function SupplierOrdersTabScreen() {
   const router = useRouter();
-  const { data: recentOrders = [] } = useRecentOrdersQuery({ limit: 20 });
+  const colors = useColors();
+  const { data: recentOrders = [], isLoading } = useRecentOrdersQuery({ limit: 20 });
+  const [filter, setFilter] = useState<SupplierOrderFilter>("new");
+
+  const counts = useMemo(
+    () =>
+      FILTERS.reduce<Record<SupplierOrderFilter, number>>(
+        (acc, f) => {
+          acc[f.key] = recentOrders.filter((o) => matchesFilter(o, f.key)).length;
+          return acc;
+        },
+        { new: 0, processing: 0, onTheWay: 0, completed: 0, all: 0 },
+      ),
+    [recentOrders],
+  );
+
+  const filtered = useMemo(
+    () => recentOrders.filter((o) => matchesFilter(o, filter)),
+    [recentOrders, filter],
+  );
 
   return (
-    <ScreenContainer className="px-5 py-4" edges={["top", "bottom", "left", "right"]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-        <View className="gap-5 pt-2">
+    <ScreenContainer className="px-5" containerClassName="bg-background">
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
+        <View className="pt-3 gap-5">
           <View className="gap-2">
-            <Text className="text-[28px] font-bold leading-8 text-foreground">{TITLE}</Text>
-            <Text className="text-base leading-6 text-muted">{SUB}</Text>
+            <Text className="text-[28px] font-bold leading-8 text-foreground">Παραγγελίες</Text>
+            <Text className="text-base leading-6 text-muted">
+              Νέες και ενεργές παραγγελίες από καταστήματα — προτεραιότητα στον χρόνο παράδοσης.
+            </Text>
           </View>
 
-          <View className="gap-3">
-            {recentOrders.map((order) => (
-              <TouchableOpacity
-                key={order.id}
-                onPress={() => router.push({ pathname: "/order-detail", params: { id: order.id } })}
-                className="rounded-[24px] border border-border bg-surface p-4"
-              >
-                <Text className="text-base font-semibold text-foreground">{order.id}</Text>
-                <Text className="mt-1 text-sm text-muted">{order.supplierName}</Text>
-                <View className="mt-3 flex-row items-center justify-between">
-                  <Text className="text-sm text-muted">{order.deliveryWindow}</Text>
-                  <Text className="text-base font-bold text-foreground">{order.total}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+          >
+            {FILTERS.map((f) => {
+              const isActive = filter === f.key;
+              return (
+                <TouchableOpacity
+                  key={f.key}
+                  onPress={() => setFilter(f.key)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isActive }}
+                  className={`flex-row items-center gap-2 rounded-full px-4 py-2 ${
+                    isActive ? "bg-primary" : "border border-border bg-surface"
+                  }`}
+                >
+                  <Text
+                    className={`text-sm font-semibold ${isActive ? "text-background" : "text-foreground"}`}
+                  >
+                    {f.label}
+                  </Text>
+                  <View
+                    className={`min-w-6 items-center rounded-full px-2 py-0.5 ${
+                      isActive ? "bg-background/20" : "bg-background"
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs font-bold ${isActive ? "text-background" : "text-muted"}`}
+                    >
+                      {counts[f.key]}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <View className="gap-3 pb-2">
+            {filtered.length === 0 ? (
+              <SupplierOrdersEmptyState
+                filter={filter}
+                isLoading={isLoading}
+                iconColor={colors.primary}
+              />
+            ) : (
+              filtered.map((order) => (
+                <TouchableOpacity
+                  key={order.id}
+                  onPress={() =>
+                    router.push({ pathname: "/order-detail", params: { id: order.id } })
+                  }
+                  className="rounded-[24px] border border-border bg-surface p-4"
+                >
+                  <View className="flex-row items-start justify-between gap-3">
+                    <View className="flex-1 gap-1">
+                      <Text className="text-base font-semibold text-foreground">{order.id}</Text>
+                      <Text className="text-sm text-muted">
+                        {order.supplierName} · {order.itemCount} είδη
+                      </Text>
+                    </View>
+                    <View className={`rounded-full px-3 py-2 ${getOrderStatusClasses(order.status)}`}>
+                      <Text className="text-xs font-semibold">{order.status}</Text>
+                    </View>
+                  </View>
+                  <View className="mt-3 flex-row items-center justify-between">
+                    <Text className="text-sm text-muted">{order.deliveryWindow}</Text>
+                    <Text className="text-base font-bold text-foreground">{order.total}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
           </View>
         </View>
       </ScrollView>
     </ScreenContainer>
+  );
+}
+
+type SupplierOrdersEmptyStateProps = {
+  filter: SupplierOrderFilter;
+  isLoading: boolean;
+  iconColor: string;
+};
+
+function SupplierOrdersEmptyState({ filter, isLoading, iconColor }: SupplierOrdersEmptyStateProps) {
+  if (isLoading) {
+    return (
+      <View className="rounded-[24px] border border-dashed border-border bg-surface/60 px-4 py-10 items-center">
+        <Text className="text-sm text-muted">Φόρτωση παραγγελιών…</Text>
+      </View>
+    );
+  }
+
+  const copy: Record<SupplierOrderFilter, { title: string; body: string }> = {
+    new: {
+      title: "Καμία νέα παραγγελία",
+      body: "Όταν έρθουν νέες παραγγελίες από καταστήματα θα εμφανιστούν εδώ άμεσα.",
+    },
+    processing: {
+      title: "Τίποτα σε επεξεργασία",
+      body: "Δεν υπάρχουν παραγγελίες σε εξέλιξη αυτή τη στιγμή.",
+    },
+    onTheWay: {
+      title: "Καμία αποστολή σε πορεία",
+      body: "Όταν ξεκινήσει μεταφορά, θα την δεις εδώ μέχρι να παραδοθεί.",
+    },
+    completed: {
+      title: "Δεν υπάρχει ιστορικό",
+      body: "Οι ολοκληρωμένες παραγγελίες θα εμφανίζονται εδώ ως αρχείο.",
+    },
+    all: {
+      title: "Δεν υπάρχουν παραγγελίες",
+      body: "Μόλις έρθουν οι πρώτες παραγγελίες, θα εμφανιστούν εδώ.",
+    },
+  };
+  const { title, body } = copy[filter];
+
+  return (
+    <View className="rounded-[24px] border border-dashed border-border bg-surface/60 px-4 py-8 items-center gap-2">
+      <View className="h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+        <IconSymbol name="bag.fill" size={22} color={iconColor} />
+      </View>
+      <Text className="text-base font-semibold text-foreground">{title}</Text>
+      <Text className="text-sm text-center leading-6 text-muted">{body}</Text>
+    </View>
   );
 }

@@ -169,6 +169,30 @@ describe("Horeca Source mobile MVP", () => {
     expect(homeScreen).toContain("Επισκόπηση");
   });
 
+  it("supplier dashboard: ελληνικά, greeting, metric tiles, preview παραδόσεων", () => {
+    const dashboard = readFileSync(path.join(root, "app/(supplier-tabs)/index.tsx"), "utf8");
+
+    expect(dashboard).not.toContain("Supplier dashboard");
+    expect(dashboard).toContain("getGreetingForDate");
+    expect(dashboard).toContain("getFirstName");
+    expect(dashboard).toContain("Επισκόπηση");
+    expect(dashboard).toContain('label="Νέες παραγγελίες"');
+    expect(dashboard).toContain("Επόμενες παραδόσεις");
+    expect(dashboard).toContain('router.push("/(supplier-tabs)/orders")');
+  });
+
+  it("supplier orders: φίλτρα ανά κατάσταση με counts και status pills", () => {
+    const ordersScreen = readFileSync(path.join(root, "app/(supplier-tabs)/orders.tsx"), "utf8");
+
+    expect(ordersScreen).toContain('useState<SupplierOrderFilter>("new")');
+    expect(ordersScreen).toContain('{ key: "new", label: "Νέες" }');
+    expect(ordersScreen).toContain('{ key: "processing", label: "Σε επεξεργασία" }');
+    expect(ordersScreen).toContain('{ key: "onTheWay", label: "Καθ\' οδόν" }');
+    expect(ordersScreen).toContain('{ key: "completed", label: "Ολοκληρωμένες" }');
+    expect(ordersScreen).toContain("getOrderStatusClasses(order.status)");
+    expect(ordersScreen).toContain('pathname: "/order-detail", params: { id: order.id }');
+  });
+
   it("buyer account: πραγματικός χρήστης, χωρίς sign-in CTAs, με έξοδο", () => {
     const accountScreen = readFileSync(path.join(root, "app/(tabs)/account.tsx"), "utf8");
 
