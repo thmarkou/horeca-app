@@ -125,6 +125,96 @@ export const featuredProducts: Product[] = [
     availability: "Περιορισμένο",
     category: "Αναλώσιμα",
   },
+  {
+    id: "4",
+    supplierId: "1",
+    name: "Colombian Single Origin Supremo",
+    unit: "250 γρ.",
+    price: "9,80€",
+    availability: "Άμεσα διαθέσιμο",
+    category: "Καφές",
+  },
+  {
+    id: "5",
+    supplierId: "1",
+    name: "Κάψουλες espresso συμβατές (Nespresso)",
+    unit: "100 τεμ.",
+    price: "22,50€",
+    availability: "Άμεσα διαθέσιμο",
+    category: "Καφές",
+  },
+  {
+    id: "6",
+    supplierId: "1",
+    name: "Γάλα barista πλήρες 1L",
+    unit: "κιβώτιο 12 τεμ.",
+    price: "18,60€",
+    availability: "Άμεσα διαθέσιμο",
+    category: "Καφές",
+  },
+  {
+    id: "7",
+    supplierId: "1",
+    name: "Γάλα barista βρώμης 1L",
+    unit: "κιβώτιο 12 τεμ.",
+    price: "28,40€",
+    availability: "Περιορισμένο",
+    category: "Καφές",
+  },
+  {
+    id: "8",
+    supplierId: "1",
+    name: "Σιρόπι βανίλια barista",
+    unit: "750 ml",
+    price: "7,20€",
+    availability: "Άμεσα διαθέσιμο",
+    category: "Καφές",
+  },
+  {
+    id: "9",
+    supplierId: "1",
+    name: "Σκόνη κακάο premium",
+    unit: "1 κιλό",
+    price: "14,30€",
+    availability: "Περιορισμένο",
+    category: "Καφές",
+  },
+  {
+    id: "10",
+    supplierId: "2",
+    name: "Ελαιόλαδο extra παρθένο",
+    unit: "5 λίτρα",
+    price: "42,00€",
+    availability: "Άμεσα διαθέσιμο",
+    category: "Πρώτες Ύλες",
+  },
+  {
+    id: "11",
+    supplierId: "2",
+    name: "Αλεύρι τύπου 00",
+    unit: "25 κιλά",
+    price: "24,90€",
+    availability: "Περιορισμένο",
+    category: "Πρώτες Ύλες",
+  },
+  {
+    id: "12",
+    supplierId: "3",
+    name: "Καπάκι καπουτσίνο 12oz",
+    unit: "100 τεμ.",
+    price: "4,80€",
+    availability: "Άμεσα διαθέσιμο",
+    category: "Αναλώσιμα",
+  },
+  {
+    id: "13",
+    supplierId: "3",
+    name: "Χαρτοπετσέτες κουβέρ 24x24",
+    unit: "2000 τεμ.",
+    price: "19,60€",
+    availability: "Άμεσα διαθέσιμο",
+    category: "Αναλώσιμα",
+  },
 ];
 
 export const recentOrders: Order[] = [
@@ -171,6 +261,26 @@ const PRODUCT_DESCRIPTIONS: Record<string, string> = {
     "Κονκασέ ντομάτας για σάλτσες και επαγγελματική κουζίνα. Συσκευασία 5 κιλών.",
   "3":
     "Χάρτινα ποτήρια διπλού τοιχώματος 12oz για takeaway. Συσκευασία 50 τεμαχίων.",
+  "4":
+    "100% arabica από την Κολομβία, μεσαίο καβούρδισμα. Ιδανικό για filter και espresso.",
+  "5":
+    "Συμβατές κάψουλες espresso, έντονη γεύση και κρέμα. Συσκευασία 100 τεμαχίων.",
+  "6":
+    "Πλήρες γάλα barista με σταθερή υφή αφρού. Κιβώτιο 12x1L.",
+  "7":
+    "Γάλα βρώμης barista, κατάλληλο για latte art και cappuccino. Κιβώτιο 12x1L.",
+  "8":
+    "Σιρόπι βανίλιας για flavored καφέδες και ροφήματα. Φιάλη 750ml με αντλία.",
+  "9":
+    "Premium σκόνη κακάο για ζεστές σοκολάτες και garnishing. Συσκευασία 1kg.",
+  "10":
+    "Extra παρθένο ελαιόλαδο πρώτης ψυχρής έκθλιψης, τσίγκινο δοχείο 5L.",
+  "11":
+    "Αλεύρι τύπου 00 για ζύμες πίτσας και ψωμιού. Σακί 25 κιλών.",
+  "12":
+    "Πλαστικά καπάκια για ποτήρι 12oz, συμβατά με τα ποτήρια διπλού τοιχώματος.",
+  "13":
+    "Χαρτοπετσέτες κουβέρ 24x24cm, μονόφυλλες, πακέτο 2000 τεμαχίων.",
 };
 
 /** Full product row for detail screen (mock). */
