@@ -715,16 +715,48 @@ app.post("/api/dev/subscription/activate", async (c) => {
   return c.json({ subscription: mapSubscriptionRow(updated) });
 });
 
+const devCancelBody = z
+  .object({
+    // Αν `true`, το plan επιστρέφει σε free άμεσα (dev-only demo convenience).
+    // Στο πραγματικό billing (RevenueCat) δεν θα υπάρχει αυτή η επιλογή —
+    // ο user διατηρεί Pro μέχρι το renewsAt, όπως κάνει το Apple/Google.
+    immediate: z.boolean().optional().default(false),
+  })
+  .optional();
+
 app.post("/api/dev/subscription/cancel", async (c) => {
   const forbidden = assertDevEnv(c);
   if (forbidden) return forbidden;
   const userId = await getAuthUserId(c);
   if (!userId) return c.json({ error: "Unauthorized" }, 401);
 
-  // «Cancel» σε SaaS λογική: ο user παραμένει pro μέχρι το renewsAt, αλλά δεν
-  // ανανεώνεται. Αν δεν υπάρχει renewsAt (πχ free), καθαρίζουμε σε expired.
+  const parsed = devCancelBody.safeParse(await c.req.json().catch(() => ({})));
+  const immediate = parsed.success ? (parsed.data?.immediate ?? false) : false;
+
   const sub = await getOrCreateSubscription(userId);
   const now = new Date();
+
+  if (immediate) {
+    // Demo shortcut: πέφτει αμέσως σε free/expired, καθαρίζουμε renewsAt ώστε
+    // το UI να μην δείξει «Λήγει στις …» που δεν ισχύει.
+    const [updated] = await db
+      .update(subscriptions)
+      .set({
+        plan: "free",
+        status: "expired",
+        canceledAt: now,
+        renewsAt: null,
+        trialEndsAt: null,
+        updatedAt: now,
+      })
+      .where(eq(subscriptions.userId, userId))
+      .returning();
+    if (!updated) return c.json({ error: "Could not cancel" }, 500);
+    return c.json({ subscription: mapSubscriptionRow(updated) });
+  }
+
+  // SaaS-standard cancel: διατηρεί Pro μέχρι το renewsAt αλλά δεν ανανεώνεται.
+  // Αν δεν υπάρχει renewsAt (πχ free), καθαρίζουμε απευθείας σε expired.
   const nextStatus: SubscriptionStatus =
     sub.plan === "pro" && sub.renewsAt && sub.renewsAt > now ? "canceled" : "expired";
   const [updated] = await db

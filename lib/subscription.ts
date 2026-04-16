@@ -201,10 +201,14 @@ export function useActivateProMutation() {
 export function useCancelSubscriptionMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input: { immediate?: boolean } = {}) => {
       const data = await apiRequest<{ subscription: Subscription }>(
         "/api/dev/subscription/cancel",
-        { method: "POST", auth: true },
+        {
+          method: "POST",
+          body: JSON.stringify({ immediate: input.immediate ?? false }),
+          auth: true,
+        },
       );
       return data.subscription;
     },
@@ -212,4 +216,13 @@ export function useCancelSubscriptionMutation() {
       queryClient.setQueryData(subscriptionQueryKeys.me, subscription);
     },
   });
+}
+
+/**
+ * True όταν το app τρέχει σε non-production (πχ Expo dev/TestFlight με
+ * demo server). Χρησιμοποιείται ΜΟΝΟ για να δείξουμε dev-only shortcuts στο
+ * UI — ποτέ για feature gating. Σε App Store build, `__DEV__` είναι false.
+ */
+export function isDevEnvironment(): boolean {
+  return typeof __DEV__ !== "undefined" && __DEV__;
 }

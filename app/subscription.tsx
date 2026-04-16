@@ -6,6 +6,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
 import {
+  isDevEnvironment,
   PLAN_CATALOG,
   PRO_PRICE_MONTHLY_EUR,
   PRO_PRICE_YEARLY_EUR,
@@ -62,6 +63,17 @@ export default function SubscriptionScreen() {
     );
   };
 
+  const cancelWithErrorHandling = (immediate: boolean) =>
+    cancelMutation.mutate(
+      { immediate },
+      {
+        onError: (err) => {
+          const message = err instanceof Error ? err.message : "Δεν ολοκληρώθηκε η ακύρωση.";
+          Alert.alert("Κάτι πήγε στραβά", message);
+        },
+      },
+    );
+
   const handleCancel = () => {
     Alert.alert(
       "Ακύρωση συνδρομής",
@@ -73,13 +85,25 @@ export default function SubscriptionScreen() {
         {
           text: "Ακύρωση συνδρομής",
           style: "destructive",
-          onPress: () =>
-            cancelMutation.mutate(undefined, {
-              onError: (err) => {
-                const message = err instanceof Error ? err.message : "Δεν ολοκληρώθηκε η ακύρωση.";
-                Alert.alert("Κάτι πήγε στραβά", message);
-              },
-            }),
+          onPress: () => cancelWithErrorHandling(false),
+        },
+      ],
+    );
+  };
+
+  // Dev-only: παρακάμπτει τη λογική «μείνε Pro μέχρι το renewsAt» ώστε να
+  // μπορείς να δοκιμάζεις γρήγορα κλειδωμένα features. Θα απομακρυνθεί
+  // αυτόματα όταν το app φτιαχτεί για App Store (το __DEV__ γίνεται false).
+  const handleDowngradeNow = () => {
+    Alert.alert(
+      "Άμεση επιστροφή σε Δωρεάν",
+      "Demo shortcut: παρακάμπτει τον κανονικό κύκλο και πέφτει κατευθείαν σε Free. Δεν θα υπάρχει στο App Store.",
+      [
+        { text: "Άκυρο", style: "cancel" },
+        {
+          text: "Επιστροφή σε Δωρεάν",
+          style: "destructive",
+          onPress: () => cancelWithErrorHandling(true),
         },
       ],
     );
@@ -134,22 +158,38 @@ export default function SubscriptionScreen() {
               </View>
 
               {isPro ? (
-                <TouchableOpacity
-                  onPress={handleCancel}
-                  disabled={cancelMutation.isPending}
-                  accessibilityRole="button"
-                  accessibilityLabel="Ακύρωση συνδρομής Pro"
-                  className={
-                    cancelMutation.isPending
-                      ? "flex-row items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-4 opacity-60"
-                      : "flex-row items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-4"
-                  }
-                >
-                  {cancelMutation.isPending ? (
-                    <ActivityIndicator color={colors.foreground} />
+                <View className="gap-2">
+                  <TouchableOpacity
+                    onPress={handleCancel}
+                    disabled={cancelMutation.isPending}
+                    accessibilityRole="button"
+                    accessibilityLabel="Ακύρωση συνδρομής Pro"
+                    className={
+                      cancelMutation.isPending
+                        ? "flex-row items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-4 opacity-60"
+                        : "flex-row items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-4"
+                    }
+                  >
+                    {cancelMutation.isPending ? (
+                      <ActivityIndicator color={colors.foreground} />
+                    ) : null}
+                    <Text className="text-base font-semibold text-foreground">Ακύρωση συνδρομής</Text>
+                  </TouchableOpacity>
+                  {isDevEnvironment() ? (
+                    <TouchableOpacity
+                      onPress={handleDowngradeNow}
+                      disabled={cancelMutation.isPending}
+                      accessibilityRole="button"
+                      accessibilityLabel="Dev-only: άμεση επιστροφή σε Δωρεάν"
+                      className="flex-row items-center justify-center gap-2 rounded-full border border-dashed border-warning bg-surface px-4 py-3"
+                    >
+                      <IconSymbol name="arrow.clockwise" size={14} color={colors.warning} />
+                      <Text className="text-sm font-semibold text-warning">
+                        Dev: επιστροφή σε Δωρεάν άμεσα
+                      </Text>
+                    </TouchableOpacity>
                   ) : null}
-                  <Text className="text-base font-semibold text-foreground">Ακύρωση συνδρομής</Text>
-                </TouchableOpacity>
+                </View>
               ) : (
                 <TouchableOpacity
                   onPress={handleUpgrade}
