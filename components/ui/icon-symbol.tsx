@@ -26,6 +26,14 @@ const MAPPING = {
   "cart.fill.badge.plus": "add-shopping-cart",
   "magnifyingglass": "search",
   "line.3.horizontal.decrease.circle.fill": "tune",
+  "chart.bar.fill": "bar-chart",
+  "square.grid.2x2.fill": "grid-view",
+  "clock.fill": "schedule",
+  "shippingbox.fill": "local-shipping",
+  "checkmark.circle.fill": "check-circle",
+  "plus.circle.fill": "add-circle",
+  "arrow.clockwise": "refresh",
+  "arrow.right": "arrow-forward",
 } as IconMapping;
 
 /**

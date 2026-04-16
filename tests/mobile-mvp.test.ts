@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { getFirstName, getGreetingForDate, getGreetingWindow } from "../lib/greeting";
 import { featuredProducts, recentOrders, suppliers } from "../lib/mocks/horeca";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -117,6 +118,36 @@ describe("Horeca Source mobile MVP", () => {
     expect(ordersScreen).not.toContain(
       '<TouchableOpacity key={order.id} className="rounded-[24px] border border-border bg-surface p-4">',
     );
+  });
+
+  it("επιλέγει σωστό χαιρετισμό ανά ώρα της ημέρας", () => {
+    expect(getGreetingWindow(8)).toBe("morning");
+    expect(getGreetingWindow(15)).toBe("afternoon");
+    expect(getGreetingWindow(22)).toBe("evening");
+    expect(getGreetingWindow(3)).toBe("evening");
+
+    expect(getGreetingForDate(new Date("2026-04-16T08:00:00"))).toBe("Καλημέρα");
+    expect(getGreetingForDate(new Date("2026-04-16T15:00:00"))).toBe("Καλησπέρα");
+    expect(getGreetingForDate(new Date("2026-04-16T22:00:00"))).toBe("Καλό βράδυ");
+  });
+
+  it("εξάγει πρώτο όνομα ή fallback σε άδειο/κενό input", () => {
+    expect(getFirstName("Γιώργος Παπαδόπουλος")).toBe("Γιώργος");
+    expect(getFirstName("  Άννα  ")).toBe("Άννα");
+    expect(getFirstName("")).toBe("φίλε");
+    expect(getFirstName(null)).toBe("φίλε");
+    expect(getFirstName(undefined, "φίλη")).toBe("φίλη");
+  });
+
+  it("αποφεύγει sign-in/sign-up CTAs στη buyer αρχική για authenticated χρήστες", () => {
+    const homeScreen = readFileSync(path.join(root, "app/(tabs)/index.tsx"), "utf8");
+
+    expect(homeScreen).not.toContain('router.push("/sign-in")');
+    expect(homeScreen).not.toContain('router.push("/sign-up")');
+    expect(homeScreen).toContain("Νέα παραγγελία");
+    expect(homeScreen).toContain("Επανάληψη");
+    expect(homeScreen).toContain("Γρήγορες ενέργειες");
+    expect(homeScreen).toContain("Επισκόπηση");
   });
 
   it("χρησιμοποιεί standard SafeAreaProvider wiring στο root layout", () => {
