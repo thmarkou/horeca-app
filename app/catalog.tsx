@@ -25,7 +25,7 @@ export default function CatalogScreen() {
 
           <View className="gap-3">
             {featuredProducts.map((product) => (
-              <View key={product.id} className="rounded-[24px] border border-border bg-surface p-4">
+              <View key={product.id} className="gap-3 rounded-[24px] border border-border bg-surface p-4">
                 <View className="flex-row items-start justify-between gap-3">
                   <View className="flex-1 gap-1">
                     <Text className="text-base font-semibold text-foreground">{product.name}</Text>
@@ -35,23 +35,27 @@ export default function CatalogScreen() {
                   </View>
                   <Text className="text-lg font-bold text-foreground">{product.price}</Text>
                 </View>
-                <View className="mt-4 flex-row items-center justify-between gap-3">
-                  <View className="rounded-full bg-background px-3 py-2">
-                    <Text className="text-xs font-semibold text-muted">{product.availability}</Text>
-                  </View>
-                  <View className="flex-row gap-2">
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push({ pathname: "/product-detail", params: { id: product.id } })
-                      }
-                      className="rounded-full border border-border bg-background px-4 py-2"
-                    >
-                      <Text className="text-sm font-semibold text-foreground">Λεπτομέρειες</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => router.push("/cart")} className="rounded-full bg-primary px-4 py-2">
-                      <Text className="text-sm font-semibold text-background">Προσθήκη στο καλάθι</Text>
-                    </TouchableOpacity>
-                  </View>
+                <View className="self-start rounded-full bg-background px-3 py-1">
+                  <Text className="text-xs font-semibold text-muted">{product.availability}</Text>
+                </View>
+                {/* 2-button row με flex-1 ώστε να μη ξεπερνάνε το πλάτος της
+                    κάρτας σε καμιά συσκευή — το προηγούμενο layout (pill + 2
+                    buttons σε μία σειρά) κοβόταν δεξιά σε iPhone. */}
+                <View className="flex-row gap-2">
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push({ pathname: "/product-detail", params: { id: product.id } })
+                    }
+                    className="flex-1 rounded-full border border-border bg-background px-4 py-3"
+                  >
+                    <Text className="text-center text-sm font-semibold text-foreground">Λεπτομέρειες</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => router.push("/cart")}
+                    className="flex-1 rounded-full bg-primary px-4 py-3"
+                  >
+                    <Text className="text-center text-sm font-semibold text-background">Στο καλάθι</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             ))}

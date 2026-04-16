@@ -438,6 +438,48 @@ describe("Horeca Source mobile MVP", () => {
     expect(indexRoute).toContain('<Redirect href="/welcome" />');
   });
 
+  it("catalog: κάρτα προϊόντος δεν κόβει τα CTAs — buttons σε δική τους σειρά με flex-1", () => {
+    const catalog = readFileSync(path.join(root, "app/catalog.tsx"), "utf8");
+
+    // Το availability pill έχει δικό του row (self-start), άρα δεν μοιράζει
+    // πλάτος με τα buttons. Αυτό κλειδώνει το layout fix που έφτιαξε το
+    // overflow του «Προσθήκη στο καλάθι».
+    expect(catalog).toContain("self-start rounded-full bg-background");
+
+    // Κάθε button έχει flex-1 ώστε να χωράνε ομοιόμορφα σε οποιαδήποτε συσκευή.
+    const buttonRow = catalog.match(/<View className="flex-row gap-2">[\s\S]+?<\/View>\s*\)\s*\)}/);
+    expect(buttonRow).not.toBeNull();
+    const buttonSection = buttonRow?.[0] ?? "";
+    expect(buttonSection).toContain("flex-1 rounded-full border");
+    expect(buttonSection).toContain("flex-1 rounded-full bg-primary");
+
+    // Shorter CTA text χωράει πάντα στο button. «Προσθήκη στο καλάθι» είχε
+    // overflow — τώρα είναι «Στο καλάθι».
+    expect(catalog).toContain("Στο καλάθι");
+    expect(catalog).not.toContain("Προσθήκη στο καλάθι");
+  });
+
+  it("suppliers: filter chips είναι ενεργά με «Όλες» reset + server-side filtering", () => {
+    const suppliers = readFileSync(path.join(root, "app/(tabs)/suppliers.tsx"), "utf8");
+
+    // State + handlers — όχι decorative chips.
+    expect(suppliers).toContain("useState<string | null>(null)");
+    expect(suppliers).toContain("setSelectedCategory(null)");
+    expect(suppliers).toContain("setSelectedCategory(category)");
+
+    // Το selection τροφοδοτεί το ίδιο το query (δεν φιλτράρουμε μόνο τοπικά).
+    expect(suppliers).toContain("useSuppliersListQuery({");
+    expect(suppliers).toContain("category: selectedCategory ?? undefined");
+
+    // «Όλες» reset chip + a11y role για όλα τα chips.
+    expect(suppliers).toContain("Όλες");
+    expect(suppliers).toContain('accessibilityRole="button"');
+    expect(suppliers).toContain("accessibilityState={{ selected:");
+
+    // Active state δεν είναι πια hardcoded στο index === 0.
+    expect(suppliers).not.toContain("index === 0");
+  });
+
   it("χρησιμοποιεί standard SafeAreaProvider wiring στο root layout", () => {
     const rootLayout = readFileSync(path.join(root, "app/_layout.tsx"), "utf8");
 
