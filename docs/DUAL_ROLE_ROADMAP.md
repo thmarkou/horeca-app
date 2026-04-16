@@ -108,7 +108,7 @@
 
 - [x] **E1.** `/api/orders/recent` role-aware: buyer → orders where `buyerId = userId`· supplier → orders where `supplierId = <listing owned by userId>`. Απαντά πλέον και με `counterpartyName` (ο άλλος ρόλος από τη σκοπιά του χρήστη).
 - [x] **E2.** `suppliers.ownerUserId` (ήδη στο schema) χρησιμοποιείται για να ενώσει τον supplier user με το storefront του· seed βάζει τον `supplier@horeca.demo` ως owner του "Aegean Coffee Trade".
-- [ ] **E3.** Rate limiting, HTTPS παραγωγής, μυστικά εκτός repo.
+- [ ] **E3. Παρκαρισμένο μέχρι αποφάσεις υποδομής.** Rate limiting, HTTPS παραγωγής, μυστικά εκτός repo. Εξαρτάται από την επιλογή hosting (Fly.io / Railway / Cloudflare Workers / άλλο) και domain, οπότε το κάνουμε όταν πλησιάσουμε σε TestFlight/App Store deployment. Μέχρι τότε ο server τρέχει μόνο σε dev LAN.
 
 ---
 
