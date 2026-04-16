@@ -5,6 +5,7 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconSymbol } from "@/components/ui/icon-symbol";
+import { MetricTile } from "@/components/ui/metric-tile";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
 import * as Auth from "@/lib/_core/auth";
@@ -172,26 +173,3 @@ export default function SupplierDashboardTabScreen() {
   );
 }
 
-type MetricTileProps = {
-  label: string;
-  value: number | string;
-  icon: Parameters<typeof IconSymbol>[0]["name"];
-  tint: string;
-};
-
-function MetricTile({ label, value, icon, tint }: MetricTileProps) {
-  return (
-    <View className="w-1/2 px-1 mb-2">
-      <View className="rounded-[20px] border border-border bg-surface px-4 py-4 gap-2">
-        <View
-          className="h-9 w-9 items-center justify-center rounded-full"
-          style={{ backgroundColor: `${tint}1A` }}
-        >
-          <IconSymbol name={icon} size={18} color={tint} />
-        </View>
-        <Text className="text-[22px] font-bold text-foreground">{value}</Text>
-        <Text className="text-xs font-medium text-muted">{label}</Text>
-      </View>
-    </View>
-  );
-}

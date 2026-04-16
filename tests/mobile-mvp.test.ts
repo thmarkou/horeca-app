@@ -192,6 +192,17 @@ describe("Horeca Source mobile MVP", () => {
     expect(platformApp).toContain("counterpartyName: supplierName");
   });
 
+  it("MetricTile είναι extracted σε shared component (έτοιμο για reuse σε buyer screens)", () => {
+    const metricTilePath = path.join(root, "components/ui/metric-tile.tsx");
+    expect(existsSync(metricTilePath), "components/ui/metric-tile.tsx should exist").toBe(true);
+
+    const dashboard = readFileSync(path.join(root, "app/(supplier-tabs)/index.tsx"), "utf8");
+    expect(dashboard).toContain('import { MetricTile } from "@/components/ui/metric-tile"');
+    // No more local redefinition of MetricTile inside the supplier dashboard —
+    // the shared component is the only source of truth.
+    expect(dashboard).not.toMatch(/^function MetricTile\(/m);
+  });
+
   it("EmptyState είναι extracted σε shared component (DRY — καμία inline dashed card)", () => {
     const emptyStatePath = path.join(root, "components/ui/empty-state.tsx");
     expect(existsSync(emptyStatePath), "components/ui/empty-state.tsx should exist").toBe(true);
