@@ -47,6 +47,8 @@
       <key>NSAllowsLocalNetworking</key>
       <true/>
     </dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Η εφαρμογή συνδέεται με το API ανάπτυξης στο τοπικό δίκτυο (Mac στο ίδιο Wi‑Fi).</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your microphone.</string>
     <key>NSUserActivityTypes</key>

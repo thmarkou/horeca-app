@@ -1,5 +1,6 @@
-// Load environment variables with proper priority (system > .env)
-import "./scripts/load-env.mjs";
+// Load .env + .env.horecaapp before reading PORT / EXPO_PUBLIC_* below.
+// Use CJS here: Xcode's EXConstants script evaluates this file via require(); importing load-env.mjs throws ERR_REQUIRE_ESM.
+require("./scripts/load-env.cjs");
 import type { ExpoConfig } from "expo/config";
 
 // Bundle ID format: space.manus.<project_name_dots>.<timestamp>
@@ -60,7 +61,9 @@ const config: ExpoConfig = {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
     "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocalNetworkUsageDescription":
+          "Η εφαρμογή συνδέεται με το API ανάπτυξης στο τοπικό δίκτυο (Mac στο ίδιο Wi‑Fi)."
       }
   },
   android: {

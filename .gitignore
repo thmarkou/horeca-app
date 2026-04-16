@@ -7,6 +7,7 @@ dist/
 web-build/
 
 # iOS (Xcode / CocoaPods — keep Podfile.lock, omit installed pods)
+ios/.xcode.env.local
 ios/Pods/
 ios/build/
 ios/**/*.xcuserstate
