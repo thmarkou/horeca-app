@@ -1,4 +1,6 @@
 import { ApiError, apiRequest } from "@/lib/api/http";
+import { clearStoredHorecaProfile } from "@/lib/horeca-stored-role";
+
 import * as Auth from "./auth";
 
 export type AuthApiUser = {
@@ -6,6 +8,7 @@ export type AuthApiUser = {
   openId: string;
   name: string | null;
   email: string | null;
+  role: "buyer" | "supplier";
   loginMethod: string | null;
   lastSignedIn: string;
 };
@@ -18,6 +21,14 @@ export async function logout(): Promise<void> {
   }
 }
 
+/** Clears remote session (best effort), local tokens, and legacy demo AsyncStorage profile. */
+export async function signOut(): Promise<void> {
+  await logout();
+  await Auth.clearUserInfo();
+  await Auth.removeSessionToken();
+  await clearStoredHorecaProfile();
+}
+
 export async function getMe(): Promise<AuthApiUser | null> {
   const cached = await Auth.getUserInfo();
   if (cached) {
@@ -26,6 +37,7 @@ export async function getMe(): Promise<AuthApiUser | null> {
       openId: cached.openId,
       name: cached.name,
       email: cached.email,
+      role: cached.role,
       loginMethod: cached.loginMethod,
       lastSignedIn:
         cached.lastSignedIn instanceof Date
@@ -58,6 +70,7 @@ export async function applyAuthApiResult(result: {
     openId: result.user.openId,
     name: result.user.name,
     email: result.user.email,
+    role: result.user.role === "supplier" ? "supplier" : "buyer",
     loginMethod: result.user.loginMethod,
     lastSignedIn: new Date(result.user.lastSignedIn),
   };

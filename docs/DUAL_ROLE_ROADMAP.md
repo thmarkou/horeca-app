@@ -18,7 +18,7 @@
 ## 2. Τρέχουσα κατάσταση (σύντομα)
 
 - **Ρόλος:** `HorecaAccountRole` (`buyer` \| `supplier`) σε `lib/horeca-stored-role.ts` + επιλογή στο sign‑up.
-- **Πλοήγηση:** Supplier → `supplier-dashboard` (stack), buyer → `/(tabs)` (5 tabs buyer‑centric).
+- **Πλοήγηση:** Supplier → `/(supplier-tabs)` (4 tabs), buyer → `/(tabs)` (5 tabs)· ρόλος από API + SecureStore.
 - **Πλατφόρμα:** API + SQLite, `users.role` στο schema, endpoints καταλόγου/παραγγελιών.
 - **Κενά:** supplier δεν έχει **δική του tab bar** εμπειρία· mixed English/ Greek σε supplier dashboard· guards “μόνο buyer” / “μόνο supplier” όχι πλήρεις· επαγγελματική polish ενιαία.
 
@@ -58,11 +58,11 @@
 
 **Στόχος:** Δύο ξεκάθαρα “roots” μετά το auth, χωρίς ασάφεια.
 
-- [ ] **A1.** Ορισμός **ρόλου από session** (JWT / profile API) ως πηγή αλήθειας· το AsyncStorage ως cache/optimistic.
-- [ ] **A2.** **Buyer:** `app/(tabs)/_layout.tsx` — κρατάς/εξελίσσεις tabs μόνο για buyer (κρύψη routes αν χρειάζεται).
-- [ ] **A3.** **Supplier:** νέο `app/(supplier-tabs)/_layout.tsx` (ή ισοδύναμο) με **δική του tab bar** (4 tabs)· μετακίνηση/σύνδεση `supplier-dashboard`, `supplier-orders` εκεί.
-- [ ] **A4.** `navigateAfterHorecaAuth` → `replace` στο `(tabs)` ή `(supplier-tabs)` ανά role.
-- [ ] **A5.** Guards: αν buyer ανοίξει `/supplier-*` ή ο supplier buyer‑only routes → redirect ή modal.
+- [x] **A1.** Ορισμός **ρόλου από session** (API `user.role` σε login/register/me + SecureStore· AsyncStorage επωνυμίας ως legacy).
+- [x] **A2.** **Buyer:** `app/(tabs)/_layout.tsx` — guard: αν `role === supplier` → `/(supplier-tabs)`.
+- [x] **A3.** **Supplier:** `app/(supplier-tabs)/_layout.tsx` — 4 tabs (Πίνακας, Παραγγελίες, Κατάλογος, Λογαριασμός)· διαγράφηκαν `supplier-dashboard` / `supplier-orders` ως ξεχωριστά stack routes.
+- [x] **A4.** `navigateAfterHorecaAuth` → `replace` σε `/(tabs)` ή `/(supplier-tabs)` μέσω `getSessionHorecaRole()`.
+- [x] **A5.** Guards: supplier shell — χωρίς user → `welcome`· buyer στο shell → `(tabs)`· buyer tabs — supplier → `/(supplier-tabs)`.
 
 **Παράδοση:** Login ως buyer → 5 tabs buyer. Login ως supplier → supplier tab bar, χωρίς orphan “Πίσω” από dashboard.
 

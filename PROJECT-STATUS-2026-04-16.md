@@ -44,9 +44,44 @@
 
 ---
 
-## Επόμενα βήματα (ενδεικτικά)
+## Φάση A — ολοκληρώθηκε (16/4/2026)
 
-- Υλοποίηση **Φάσης A** του `docs/DUAL_ROLE_ROADMAP.md` (ξεχωριστό shell πλοήγησης για supplier με tab bar, ρόλος από session API).
+**Στόχος:** ένα app με διακριτά shells ανά ρόλο (buyer 5 tabs, supplier 4 tabs).
+
+### Backend (`platform/app.ts`)
+
+- Το `user` σε **register**, **login** και **me** περιλαμβάνει πλέον **`role`** (`buyer` | `supplier`) από τη βάση.
+
+### Auth client (`lib/_core/`)
+
+- **`auth.ts`:** τύπος `HorecaUserRole`, πεδίο **`role`** στο `User`, **`normalizeUserPayload`** για παλιά cache χωρίς `role` (→ buyer ως fallback).
+- **`api.ts`:** `AuthApiUser.role`, `applyAuthApiResult` αποθηκεύει `role`, προστέθηκε **`signOut()`** (logout + SecureStore + `clearStoredHorecaProfile`).
+- **`horeca-stored-role.ts`:** νέες `getSessionHorecaRole()` και `clearStoredHorecaProfile()`· `navigateAfterHorecaAuth` → `/(supplier-tabs)` ή `/(tabs)`.
+
+### Πλοήγηση
+
+- **Νέο `app/(supplier-tabs)/`**: `_layout`, `index` (Πίνακας), `orders` (Παραγγελίες), `catalog` (placeholder), `account` (με Έξοδος).
+- Guard στο supplier shell: χωρίς user → `welcome`, buyer → `/(tabs)`.
+- Guard στα buyer `app/(tabs)/_layout.tsx`: supplier → `/(supplier-tabs)`.
+- **`app/_layout.tsx`:** `Stack.Screen` για `(supplier-tabs)`.
+- Διαγράφηκαν τα legacy `app/supplier-dashboard.tsx` και `app/supplier-orders.tsx`.
+
+### Επιβεβαίωση
+
+- `pnpm exec tsc` + `pnpm test` πράσινα.
+- Πραγματική δοκιμή σε iPhone: **5 tabs** ως buyer, **4 tabs** ως supplier.
+
+### Demo λογαριασμοί (seed)
+
+- `buyer@horeca.demo` / `demo1234`
+- `supplier@horeca.demo` / `demo1234`
+
+---
+
+## Επόμενα βήματα
+
+- **Φάση B** του `docs/DUAL_ROLE_ROADMAP.md`: polish buyer οθονών (ιεραρχία, empty states, ενιαία ελληνικά, CTAs).
+- **Φάση C/D/E** κατά σειρά του roadmap.
 - Παραγωγή: hosted API **HTTPS** + `EXPO_PUBLIC_API_BASE_URL` παραγωγής, TestFlight.
 
 ---

@@ -7,7 +7,7 @@ import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
 import * as Auth from "@/lib/_core/auth";
 
-export default function TabLayout() {
+export default function SupplierTabLayout() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -19,8 +19,12 @@ export default function TabLayout() {
     (async () => {
       const user = await Auth.getUserInfo();
       if (cancelled) return;
-      if (user?.role === "supplier") {
-        router.replace("/(supplier-tabs)");
+      if (!user) {
+        router.replace("/welcome");
+        return;
+      }
+      if (user.role !== "supplier") {
+        router.replace("/(tabs)");
       }
     })();
     return () => {
@@ -52,35 +56,28 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Αρχική",
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="house.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="suppliers"
-        options={{
-          title: "Προμηθευτές",
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="building.2.fill" color={color} />,
+          title: "\u03a0\u03af\u03bd\u03b1\u03ba\u03b1\u03c2",
+          tabBarIcon: ({ color }) => <IconSymbol size={24} name="chart.bar.fill" color={color} />,
         }}
       />
       <Tabs.Screen
         name="orders"
         options={{
-          title: "Παραγγελίες",
+          title: "\u03a0\u03b1\u03c1\u03b1\u03b3\u03b3\u03b5\u03bb\u03af\u03b5\u03c2",
           tabBarIcon: ({ color }) => <IconSymbol size={24} name="bag.fill" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="favorites"
+        name="catalog"
         options={{
-          title: "Αγαπημένα",
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="heart.fill" color={color} />,
+          title: "\u039a\u03b1\u03c4\u03ac\u03bb\u03bf\u03b3\u03bf\u03c2",
+          tabBarIcon: ({ color }) => <IconSymbol size={24} name="square.grid.2x2.fill" color={color} />,
         }}
       />
       <Tabs.Screen
         name="account"
         options={{
-          title: "Λογαριασμός",
+          title: "\u039b\u03bf\u03b3\u03b1\u03c1\u03b9\u03b1\u03c3\u03bc\u03cc\u03c2",
           tabBarIcon: ({ color }) => <IconSymbol size={24} name="person.crop.circle.fill" color={color} />,
         }}
       />

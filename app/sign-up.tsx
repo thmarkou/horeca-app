@@ -74,8 +74,8 @@ export default function SignUpScreen() {
         role,
       );
       await Api.applyAuthApiResult(result);
-      await setStoredHorecaProfile(role, trimmedCompanyName);
-      await navigateAfterHorecaAuth(router, role);
+      await setStoredHorecaProfile(result.user.role, trimmedCompanyName);
+      await navigateAfterHorecaAuth(router);
     } catch (error) {
       console.error("[SignUp] Register failed", error);
       const msg = error instanceof Error ? error.message : String(error);
