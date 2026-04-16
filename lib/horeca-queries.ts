@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, apiRequest } from "@/lib/api/http";
 import type { Order, Product, Supplier } from "@/lib/mocks/horeca";
@@ -151,6 +151,65 @@ export function useSupplierOwnProductsQuery() {
         }
         throw e;
       }
+    },
+  });
+}
+
+/**
+ * Toggles a single product's availability between `immediate` and `limited`.
+ * Uses an optimistic update so the pill flips instantly· on error we roll back
+ * the cache to the previous snapshot. Also invalidates buyer-facing catalog
+ * queries so the new availability is reflected across the app.
+ */
+export function useToggleSupplierProductAvailabilityMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      productId: string;
+      availability: "immediate" | "limited";
+    }) => {
+      return await apiRequest<{ product: SupplierOwnProduct }>(
+        `/api/supplier/products/${input.productId}/availability`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ availability: input.availability }),
+          auth: true,
+        },
+      );
+    },
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: horecaQueryKeys.supplierOwnProducts });
+      const previous = queryClient.getQueryData<SupplierOwnCatalog>(
+        horecaQueryKeys.supplierOwnProducts,
+      );
+      if (previous) {
+        const displayLabel: SupplierOwnProduct["availability"] =
+          input.availability === "immediate" ? "Άμεσα διαθέσιμο" : "Περιορισμένο";
+        queryClient.setQueryData<SupplierOwnCatalog>(horecaQueryKeys.supplierOwnProducts, {
+          ...previous,
+          products: previous.products.map((p) =>
+            p.id === input.productId
+              ? { ...p, availabilityStatus: input.availability, availability: displayLabel }
+              : p,
+          ),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _input, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(horecaQueryKeys.supplierOwnProducts, context.previous);
+      }
+    },
+    onSettled: () => {
+      // Supplier's own list + downstream buyer views must all re-fetch so the
+      // availability change propagates everywhere (featured list, supplier
+      // profile products, single product detail).
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.supplierOwnProducts });
+      queryClient.invalidateQueries({ queryKey: ["horeca", "featuredProducts"] });
+      queryClient.invalidateQueries({ queryKey: ["horeca", "productsBySupplier"] });
+      queryClient.invalidateQueries({ queryKey: ["horeca", "product"] });
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.supplierOperationalSummary });
     },
   });
 }

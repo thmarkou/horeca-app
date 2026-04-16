@@ -90,7 +90,7 @@
 - [x] **C3.** Λεπτομέρεια παραγγελίας: shared `/order-detail` route που δέχεται `id` — δουλεύει και για supplier από το Dashboard & Orders preview. Στοιχεία επικοινωνίας buyer παραμένουν για Φάση E (όταν το API τα παρέχει).
 - **C4.** Κατάλογος supplier — σε βήματα:
   - [x] **C4a.** Read-only list: νέο role-gated `GET /api/supplier/products` (εντοπίζει το storefront μέσω `suppliers.ownerUserId`), νέος hook `useSupplierOwnProductsQuery`, νέα οθόνη `(supplier-tabs)/catalog.tsx` με summary tiles (σύνολο + χαμηλό απόθεμα), κάρτες προϊόντων με availability pill (success/warning) και empty/loading/error states. Το API επιστρέφει και raw `availabilityStatus` ώστε το C4b να χτίσει toggle πάνω στο ίδιο payload.
-  - [ ] **C4b.** Toggle διαθεσιμότητας (immediate ↔ limited) — `PATCH /api/supplier/products/:id/availability` + mutation.
+  - [x] **C4b.** Toggle διαθεσιμότητας (immediate ↔ limited): role-gated + ownership-gated `PATCH /api/supplier/products/:id/availability` (επαληθεύει ότι το product ανήκει στο listing του authenticated supplier). Client mutation με **optimistic update** και rollback σε error· invalidate και των buyer-side queries (featuredProducts, productsBySupplier, product, operationalSummary) ώστε η αλλαγή να διαδοθεί παντού. UI: tappable availability pill με per-card busy state και spinner. CORS επεκτάθηκε με PATCH/DELETE (προετοιμασία για C4c).
   - [ ] **C4c.** Full CRUD (create / edit / delete) — forms, validation, cache invalidation.
 
 **Παράδοση:** Supplier μπορεί να χρησιμοποιήσει την εφαρμογή ως “κανονικό” εργαλείο ημέρας.

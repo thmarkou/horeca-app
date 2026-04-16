@@ -1,47 +1,69 @@
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useColors } from "@/hooks/use-colors";
 import {
   useSupplierOwnProductsQuery,
+  useToggleSupplierProductAvailabilityMutation,
   type SupplierOwnProduct,
 } from "@/lib/horeca-queries";
 
-// Αpplies το ίδιο pill vocabulary με τις υπόλοιπες οθόνες (success/warning),
-// ώστε ο supplier να αναγνωρίζει άμεσα τι είναι «σε απόθεμα» και τι όχι.
-function AvailabilityPill({ product }: { product: SupplierOwnProduct }) {
+// Tappable pill: tap → flip availability (immediate ↔ limited) με optimistic
+// update. `pending` έρχεται από το mutation του parent ώστε μόνο η ενεργή κάρτα
+// να δείχνει busy state όταν υπάρχουν πολλά ταυτόχρονα PATCH requests.
+function AvailabilityToggle({
+  product,
+  pending,
+  onToggle,
+}: {
+  product: SupplierOwnProduct;
+  pending: boolean;
+  onToggle: (next: "immediate" | "limited") => void;
+}) {
   const isImmediate = product.availabilityStatus === "immediate";
+  const next: "immediate" | "limited" = isImmediate ? "limited" : "immediate";
+
+  const base = isImmediate
+    ? "flex-row items-center gap-2 self-start rounded-full bg-success/10 px-3 py-1"
+    : "flex-row items-center gap-2 self-start rounded-full bg-warning/10 px-3 py-1";
+  const textClass = isImmediate
+    ? "text-xs font-semibold text-success"
+    : "text-xs font-semibold text-warning";
+
   return (
-    <View
-      className={
-        isImmediate
-          ? "self-start rounded-full bg-success/10 px-3 py-1"
-          : "self-start rounded-full bg-warning/10 px-3 py-1"
-      }
+    <TouchableOpacity
+      onPress={() => onToggle(next)}
+      disabled={pending}
+      accessibilityRole="button"
+      accessibilityLabel={`Αλλαγή διαθεσιμότητας: ${product.availability}. Πάτησε για ${next === "immediate" ? "Άμεσα διαθέσιμο" : "Περιορισμένο"}.`}
+      accessibilityState={{ busy: pending }}
+      className={pending ? `${base} opacity-60` : base}
     >
-      <Text
-        className={
-          isImmediate
-            ? "text-xs font-semibold text-success"
-            : "text-xs font-semibold text-warning"
-        }
-      >
-        {product.availability}
-      </Text>
-    </View>
+      {pending ? (
+        <ActivityIndicator size="small" />
+      ) : null}
+      <Text className={textClass}>{product.availability}</Text>
+    </TouchableOpacity>
   );
 }
 
 export default function SupplierCatalogScreen() {
   const colors = useColors();
   const { data, isLoading, isError, refetch } = useSupplierOwnProductsQuery();
+  const toggleMutation = useToggleSupplierProductAvailabilityMutation();
 
   const products = data?.products ?? [];
   const supplierName = data?.supplierName ?? null;
   const lowStockCount = products.filter(
     (p) => p.availabilityStatus === "limited",
   ).length;
+
+  // Which product is currently being toggled (for per-card busy state).
+  const pendingProductId =
+    toggleMutation.isPending && toggleMutation.variables
+      ? toggleMutation.variables.productId
+      : null;
 
   return (
     <ScreenContainer className="px-5" containerClassName="bg-background">
@@ -56,6 +78,9 @@ export default function SupplierCatalogScreen() {
               {supplierName
                 ? `Τα προϊόντα της ${supplierName} όπως τα βλέπουν οι αγοραστές.`
                 : "Τα προϊόντα της επιχείρησής σου όπως τα βλέπουν οι αγοραστές."}
+            </Text>
+            <Text className="text-sm leading-5 text-muted">
+              Πάτησε στην ετικέτα διαθεσιμότητας κάθε προϊόντος για να την αλλάξεις.
             </Text>
           </View>
 
@@ -97,7 +122,7 @@ export default function SupplierCatalogScreen() {
             <EmptyState
               icon={{ name: "shippingbox.fill", color: colors.primary }}
               title="Δεν έχεις προϊόντα ακόμη"
-              body="Η διαχείριση προϊόντων από το κινητό (προσθήκη, επεξεργασία, διαθεσιμότητα) ενεργοποιείται στα επόμενα βήματα."
+              body="Η προσθήκη και επεξεργασία προϊόντων ενεργοποιείται στο επόμενο βήμα."
             />
           ) : (
             <View className="gap-3">
@@ -116,7 +141,13 @@ export default function SupplierCatalogScreen() {
                     </View>
                     <Text className="text-base font-bold text-foreground">{product.price}</Text>
                   </View>
-                  <AvailabilityPill product={product} />
+                  <AvailabilityToggle
+                    product={product}
+                    pending={pendingProductId === product.id}
+                    onToggle={(next) =>
+                      toggleMutation.mutate({ productId: product.id, availability: next })
+                    }
+                  />
                 </View>
               ))}
             </View>

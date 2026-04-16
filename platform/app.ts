@@ -16,7 +16,7 @@ app.use(
   cors({
     origin: "*",
     allowHeaders: ["Content-Type", "Authorization"],
-    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   }),
 );
 
@@ -336,6 +336,53 @@ app.get("/api/supplier/products", async (c) => {
     supplierName: listing.name,
     products: list.map(mapSupplierProductRow),
   });
+});
+
+const availabilityBody = z.object({
+  availability: z.enum(["immediate", "limited"]),
+});
+
+app.patch("/api/supplier/products/:id/availability", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "supplier") {
+    return c.json({ error: "Supplier role required" }, 403);
+  }
+  const [listing] = await db
+    .select()
+    .from(suppliers)
+    .where(eq(suppliers.ownerUserId, userId))
+    .limit(1);
+  if (!listing) return c.json({ error: "No storefront linked to this supplier" }, 404);
+
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) return c.json({ error: "Invalid product id" }, 400);
+
+  const parsed = availabilityBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: "availability must be 'immediate' or 'limited'" }, 400);
+  }
+
+  // Ownership guard: the product must belong to the supplier's own listing.
+  // Prevents cross-tenant updates even if the caller guesses a product id.
+  const [existing] = await db
+    .select()
+    .from(products)
+    .where(eq(products.id, id))
+    .limit(1);
+  if (!existing || existing.supplierId !== listing.id) {
+    return c.json({ error: "Product not found" }, 404);
+  }
+
+  const [updated] = await db
+    .update(products)
+    .set({ availability: parsed.data.availability })
+    .where(eq(products.id, id))
+    .returning();
+  if (!updated) return c.json({ error: "Could not update product" }, 500);
+
+  return c.json({ product: mapSupplierProductRow(updated) });
 });
 
 app.get("/api/supplier/operational-summary", async (c) => {

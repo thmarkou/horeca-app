@@ -357,6 +357,36 @@ describe("Horeca Source mobile MVP", () => {
     expect(accountScreen).toContain("Κατάστημα");
   });
 
+  it("C4b: supplier μπορεί να αλλάξει διαθεσιμότητα προϊόντος με PATCH + optimistic update", () => {
+    const queries = readFileSync(path.join(root, "lib/horeca-queries.ts"), "utf8");
+    const platform = readFileSync(path.join(root, "platform/app.ts"), "utf8");
+    const catalog = readFileSync(path.join(root, "app/(supplier-tabs)/catalog.tsx"), "utf8");
+
+    // PATCH endpoint υπάρχει και είναι role-gated + ownership-gated.
+    expect(platform).toContain('app.patch("/api/supplier/products/:id/availability"');
+    expect(platform).toContain("existing.supplierId !== listing.id");
+    expect(platform).toMatch(/z\.enum\(\["immediate", "limited"\]\)/);
+
+    // CORS επιτρέπει PATCH (αλλιώς preflight αποτυγχάνει στη συσκευή).
+    expect(platform).toMatch(/allowMethods:\s*\[[^\]]*"PATCH"/);
+
+    // Mutation hook + optimistic update + rollback + invalidations.
+    expect(queries).toContain("export function useToggleSupplierProductAvailabilityMutation");
+    expect(queries).toContain('method: "PATCH"');
+    expect(queries).toContain("onMutate");
+    expect(queries).toContain("onError");
+    expect(queries).toContain("cancelQueries");
+    // Propagation: buyer-side queries invalidated μετά από toggle.
+    expect(queries).toContain('queryKey: ["horeca", "featuredProducts"]');
+    expect(queries).toContain('queryKey: ["horeca", "productsBySupplier"]');
+
+    // UI: tap-to-toggle με per-card busy state.
+    expect(catalog).toContain("useToggleSupplierProductAvailabilityMutation");
+    expect(catalog).toContain("AvailabilityToggle");
+    expect(catalog).toContain("pendingProductId");
+    expect(catalog).toContain("accessibilityRole=\"button\"");
+  });
+
   it("C4a: supplier catalog τραβάει δικά του προϊόντα από role-gated endpoint", () => {
     const queries = readFileSync(path.join(root, "lib/horeca-queries.ts"), "utf8");
     const platform = readFileSync(path.join(root, "platform/app.ts"), "utf8");
