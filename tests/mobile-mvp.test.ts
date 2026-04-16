@@ -192,6 +192,30 @@ describe("Horeca Source mobile MVP", () => {
     expect(platformApp).toContain("counterpartyName: supplierName");
   });
 
+  it("EmptyState είναι extracted σε shared component (DRY — καμία inline dashed card)", () => {
+    const emptyStatePath = path.join(root, "components/ui/empty-state.tsx");
+    expect(existsSync(emptyStatePath), "components/ui/empty-state.tsx should exist").toBe(true);
+
+    const screensUsingEmptyState = [
+      "app/(tabs)/index.tsx",
+      "app/(tabs)/orders.tsx",
+      "app/(supplier-tabs)/index.tsx",
+      "app/(supplier-tabs)/orders.tsx",
+    ];
+
+    for (const rel of screensUsingEmptyState) {
+      const source = readFileSync(path.join(root, rel), "utf8");
+      expect(source, `${rel} should import EmptyState`).toContain(
+        'import { EmptyState } from "@/components/ui/empty-state"',
+      );
+      // The full empty-card pattern (dashed border + icon circle + title) must
+      // NOT be reconstructed inline — EmptyState is the only place that owns it.
+      expect(source, `${rel} should not reconstruct the dashed empty card inline`).not.toMatch(
+        /rounded-\[24px\][^"`]*border-dashed[^"`]*px-4 py-8/,
+      );
+    }
+  });
+
   it("StatusPill είναι extracted σε shared component (DRY — καμία inline pill markup)", () => {
     const statusPillPath = path.join(root, "components/ui/status-pill.tsx");
     expect(existsSync(statusPillPath), "components/ui/status-pill.tsx should exist").toBe(true);

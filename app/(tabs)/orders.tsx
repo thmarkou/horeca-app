@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { EmptyState } from "@/components/ui/empty-state";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
@@ -193,15 +194,11 @@ function OrdersEmptyState({
   const { title, body, cta } = copy[filter];
 
   return (
-    <View className="rounded-[24px] border border-dashed border-border bg-surface/60 px-4 py-8 items-center gap-2">
-      <View className="h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-        <IconSymbol name="bag.fill" size={22} color={primaryIconColor} />
-      </View>
-      <Text className="text-base font-semibold text-foreground">{title}</Text>
-      <Text className="text-sm text-center leading-6 text-muted">{body}</Text>
-      <TouchableOpacity onPress={onPrimary} className="mt-2 rounded-full bg-primary px-5 py-3">
-        <Text className="text-sm font-semibold text-background">{cta}</Text>
-      </TouchableOpacity>
-    </View>
+    <EmptyState
+      icon={{ name: "bag.fill", color: primaryIconColor }}
+      title={title}
+      body={body}
+      cta={{ label: cta, onPress: onPrimary }}
+    />
   );
 }

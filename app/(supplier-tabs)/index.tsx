@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { EmptyState } from "@/components/ui/empty-state";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
@@ -121,17 +122,11 @@ export default function SupplierDashboardTabScreen() {
               </TouchableOpacity>
             </View>
             {upcoming.length === 0 ? (
-              <View className="rounded-[24px] border border-dashed border-border bg-surface/60 px-4 py-8 items-center gap-2">
-                <View className="h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                  <IconSymbol name="checkmark.circle.fill" size={22} color={colors.success} />
-                </View>
-                <Text className="text-base font-semibold text-foreground">
-                  Δεν υπάρχουν εκκρεμείς παραδόσεις
-                </Text>
-                <Text className="text-sm text-center leading-6 text-muted">
-                  Όλες οι παραγγελίες έχουν ολοκληρωθεί. Καλή δουλειά!
-                </Text>
-              </View>
+              <EmptyState
+                icon={{ name: "checkmark.circle.fill", color: colors.success }}
+                title="Δεν υπάρχουν εκκρεμείς παραδόσεις"
+                body="Όλες οι παραγγελίες έχουν ολοκληρωθεί. Καλή δουλειά!"
+              />
             ) : (
               <View className="gap-3">
                 {upcoming.map((order) => (

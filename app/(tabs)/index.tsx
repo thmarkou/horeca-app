@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { EmptyState } from "@/components/ui/empty-state";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
@@ -300,21 +301,12 @@ export default function HomeScreen() {
                 ))}
               </View>
             ) : (
-              <View className="rounded-[24px] border border-dashed border-border bg-surface/60 px-4 py-8 items-center gap-2">
-                <View className="h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                  <IconSymbol name="bag.fill" size={22} color={colors.primary} />
-                </View>
-                <Text className="text-base font-semibold text-foreground">Δεν έχεις ακόμη παραγγελίες</Text>
-                <Text className="text-sm text-center leading-6 text-muted">
-                  Ξεκίνα από τους προτεινόμενους προμηθευτές ή αναζήτησε αυτό που χρειάζεσαι.
-                </Text>
-                <TouchableOpacity
-                  onPress={() => router.push("/suppliers")}
-                  className="mt-2 rounded-full bg-primary px-5 py-3"
-                >
-                  <Text className="text-sm font-semibold text-background">Αναζήτηση προμηθευτών</Text>
-                </TouchableOpacity>
-              </View>
+              <EmptyState
+                icon={{ name: "bag.fill", color: colors.primary }}
+                title="Δεν έχεις ακόμη παραγγελίες"
+                body="Ξεκίνα από τους προτεινόμενους προμηθευτές ή αναζήτησε αυτό που χρειάζεσαι."
+                cta={{ label: "Αναζήτηση προμηθευτών", onPress: () => router.push("/suppliers") }}
+              />
             )}
           </View>
         </View>
