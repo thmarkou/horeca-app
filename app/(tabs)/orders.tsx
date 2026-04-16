@@ -4,6 +4,7 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterTabs, type FilterTab } from "@/components/ui/filter-tabs";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
@@ -18,7 +19,7 @@ const ACTIVE_STATUSES: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
   "Καθ' οδόν",
 ]);
 
-const FILTERS: ReadonlyArray<{ key: OrderFilter; label: string }> = [
+const FILTER_DEFS: ReadonlyArray<{ key: OrderFilter; label: string }> = [
   { key: "active", label: "Ενεργές" },
   { key: "history", label: "Ιστορικό" },
   { key: "all", label: "Όλες" },
@@ -41,15 +42,13 @@ export default function OrdersScreen() {
   const { data: recentOrders = [], isLoading } = useRecentOrdersQuery({ limit: 20 });
   const [filter, setFilter] = useState<OrderFilter>("active");
 
-  const counts = useMemo(
+  const filterTabs = useMemo<ReadonlyArray<FilterTab<OrderFilter>>>(
     () =>
-      FILTERS.reduce<Record<OrderFilter, number>>(
-        (acc, f) => {
-          acc[f.key] = recentOrders.filter((o) => matchesFilter(o, f.key)).length;
-          return acc;
-        },
-        { active: 0, history: 0, all: 0 },
-      ),
+      FILTER_DEFS.map((f) => ({
+        key: f.key,
+        label: f.label,
+        count: recentOrders.filter((o) => matchesFilter(o, f.key)).length,
+      })),
     [recentOrders],
   );
 
@@ -69,39 +68,7 @@ export default function OrdersScreen() {
             </Text>
           </View>
 
-          <View className="flex-row gap-2">
-            {FILTERS.map((f) => {
-              const isActive = filter === f.key;
-              return (
-                <TouchableOpacity
-                  key={f.key}
-                  onPress={() => setFilter(f.key)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isActive }}
-                  className={`flex-row items-center gap-2 rounded-full px-4 py-2 ${
-                    isActive ? "bg-primary" : "border border-border bg-surface"
-                  }`}
-                >
-                  <Text
-                    className={`text-sm font-semibold ${isActive ? "text-background" : "text-foreground"}`}
-                  >
-                    {f.label}
-                  </Text>
-                  <View
-                    className={`min-w-6 items-center rounded-full px-2 py-0.5 ${
-                      isActive ? "bg-background/20" : "bg-background"
-                    }`}
-                  >
-                    <Text
-                      className={`text-xs font-bold ${isActive ? "text-background" : "text-muted"}`}
-                    >
-                      {counts[f.key]}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <FilterTabs filters={filterTabs} active={filter} onChange={setFilter} />
 
           <View className="gap-3 pb-2">
             {filtered.length === 0 ? (

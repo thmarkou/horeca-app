@@ -192,6 +192,34 @@ describe("Horeca Source mobile MVP", () => {
     expect(platformApp).toContain("counterpartyName: supplierName");
   });
 
+  it("FilterTabs είναι extracted σε shared generic component (buyer & supplier orders)", () => {
+    const filterTabsPath = path.join(root, "components/ui/filter-tabs.tsx");
+    expect(existsSync(filterTabsPath), "components/ui/filter-tabs.tsx should exist").toBe(true);
+
+    const buyerOrders = readFileSync(path.join(root, "app/(tabs)/orders.tsx"), "utf8");
+    const supplierOrders = readFileSync(path.join(root, "app/(supplier-tabs)/orders.tsx"), "utf8");
+
+    // Both screens must consume the shared component.
+    expect(buyerOrders).toContain(
+      'import { FilterTabs, type FilterTab } from "@/components/ui/filter-tabs"',
+    );
+    expect(supplierOrders).toContain(
+      'import { FilterTabs, type FilterTab } from "@/components/ui/filter-tabs"',
+    );
+    expect(buyerOrders).toContain("<FilterTabs filters={filterTabs}");
+    expect(supplierOrders).toContain("<FilterTabs filters={filterTabs}");
+    // Supplier orders has 5 filters — horizontal scroll required.
+    expect(supplierOrders).toContain("scrollable");
+
+    // No inline reconstruction of the chip pattern in either screen.
+    expect(buyerOrders, "buyer orders should not inline the chip row").not.toMatch(
+      /flex-row items-center gap-2 rounded-full px-4 py-2[\s\S]{0,200}isActive \? "bg-primary"/,
+    );
+    expect(supplierOrders, "supplier orders should not inline the chip row").not.toMatch(
+      /flex-row items-center gap-2 rounded-full px-4 py-2[\s\S]{0,200}isActive \? "bg-primary"/,
+    );
+  });
+
   it("MetricTile είναι extracted σε shared component (έτοιμο για reuse σε buyer screens)", () => {
     const metricTilePath = path.join(root, "components/ui/metric-tile.tsx");
     expect(existsSync(metricTilePath), "components/ui/metric-tile.tsx should exist").toBe(true);
