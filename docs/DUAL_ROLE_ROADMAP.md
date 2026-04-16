@@ -88,7 +88,10 @@
 - [x] **C1.** Πίνακας: greeting + όνομα, hero προτεραιότητας όταν υπάρχουν νέες παραγγελίες, 2x2 metric tiles (Νέες / Σε επεξεργασία / Χαμηλό απόθεμα / Τζίρος), preview επόμενων παραδόσεων με status pills. Αφαιρέθηκε το “Supplier dashboard” ως τίτλος‑μόκο.
 - [x] **C2.** Λίστα παραγγελιών supplier: φίλτρα (Νέες / Σε επεξεργασία / Καθ' οδόν / Ολοκληρωμένες / Όλες) με live counts, status pills ανά κάρτα, empty states ανά φίλτρο, horizontal scroll στα chips.
 - [x] **C3.** Λεπτομέρεια παραγγελίας: shared `/order-detail` route που δέχεται `id` — δουλεύει και για supplier από το Dashboard & Orders preview. Στοιχεία επικοινωνίας buyer παραμένουν για Φάση E (όταν το API τα παρέχει).
-- [ ] **C4.** Θέση για **κατάλογο** (προϊόντα τιμές) — placeholder· ενεργοποιείται με API.
+- **C4.** Κατάλογος supplier — σε βήματα:
+  - [x] **C4a.** Read-only list: νέο role-gated `GET /api/supplier/products` (εντοπίζει το storefront μέσω `suppliers.ownerUserId`), νέος hook `useSupplierOwnProductsQuery`, νέα οθόνη `(supplier-tabs)/catalog.tsx` με summary tiles (σύνολο + χαμηλό απόθεμα), κάρτες προϊόντων με availability pill (success/warning) και empty/loading/error states. Το API επιστρέφει και raw `availabilityStatus` ώστε το C4b να χτίσει toggle πάνω στο ίδιο payload.
+  - [ ] **C4b.** Toggle διαθεσιμότητας (immediate ↔ limited) — `PATCH /api/supplier/products/:id/availability` + mutation.
+  - [ ] **C4c.** Full CRUD (create / edit / delete) — forms, validation, cache invalidation.
 
 **Παράδοση:** Supplier μπορεί να χρησιμοποιήσει την εφαρμογή ως “κανονικό” εργαλείο ημέρας.
 

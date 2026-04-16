@@ -294,6 +294,50 @@ app.get("/api/orders/recent", async (c) => {
   });
 });
 
+// Supplier's own product catalog. Returns the raw availability status as well
+// as the display label so the client can render a toggle in later phases (C4b).
+function mapSupplierProductRow(p: typeof products.$inferSelect) {
+  const status: "immediate" | "limited" = p.availability === "limited" ? "limited" : "immediate";
+  return {
+    id: String(p.id),
+    name: p.name,
+    description: p.description,
+    unit: p.unit,
+    price: formatEur(p.priceEur),
+    priceEur: p.priceEur,
+    availability: formatAvailability(p.availability),
+    availabilityStatus: status,
+    category: p.category,
+  };
+}
+
+app.get("/api/supplier/products", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "supplier") {
+    return c.json({ error: "Supplier role required" }, 403);
+  }
+  const [listing] = await db
+    .select()
+    .from(suppliers)
+    .where(eq(suppliers.ownerUserId, userId))
+    .limit(1);
+  if (!listing) {
+    return c.json({ supplierId: null, supplierName: null, products: [] });
+  }
+  const list = await db
+    .select()
+    .from(products)
+    .where(eq(products.supplierId, listing.id))
+    .orderBy(asc(products.name));
+  return c.json({
+    supplierId: String(listing.id),
+    supplierName: listing.name,
+    products: list.map(mapSupplierProductRow),
+  });
+});
+
 app.get("/api/supplier/operational-summary", async (c) => {
   const userId = await getAuthUserId(c);
   if (!userId) return c.json({ error: "Unauthorized" }, 401);

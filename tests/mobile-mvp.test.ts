@@ -357,6 +357,29 @@ describe("Horeca Source mobile MVP", () => {
     expect(accountScreen).toContain("Κατάστημα");
   });
 
+  it("C4a: supplier catalog τραβάει δικά του προϊόντα από role-gated endpoint", () => {
+    const queries = readFileSync(path.join(root, "lib/horeca-queries.ts"), "utf8");
+    const platform = readFileSync(path.join(root, "platform/app.ts"), "utf8");
+    const catalog = readFileSync(path.join(root, "app/(supplier-tabs)/catalog.tsx"), "utf8");
+
+    // Backend endpoint και μάλιστα gated με role=supplier + ownerUserId.
+    expect(platform).toContain('app.get("/api/supplier/products"');
+    expect(platform).toMatch(/u\.role !== "supplier"[\s\S]{0,100}Supplier role required/);
+    expect(platform).toContain("eq(suppliers.ownerUserId, userId)");
+    expect(platform).toContain("availabilityStatus");
+
+    // Client hook + types εκτεθειμένα.
+    expect(queries).toContain("export function useSupplierOwnProductsQuery");
+    expect(queries).toContain("supplierOwnProducts");
+    expect(queries).toContain("export type SupplierOwnProduct");
+
+    // Η οθόνη καταναλώνει το hook και δεν είναι πλέον placeholder.
+    expect(catalog).toContain("useSupplierOwnProductsQuery");
+    expect(catalog).not.toContain("SupplierCatalogPlaceholderScreen");
+    expect(catalog).toContain("Κατάλογος");
+    expect(catalog).toContain("Χαμηλό απόθεμα");
+  });
+
   it("welcome: role-aware onboarding με δύο value cards και καθαρά CTAs", () => {
     const welcome = readFileSync(path.join(root, "app/welcome.tsx"), "utf8");
 

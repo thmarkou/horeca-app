@@ -5,6 +5,29 @@ import type { Order, Product, Supplier } from "@/lib/mocks/horeca";
 
 export type ProductDetail = Product & { description: string; supplierName: string };
 
+/**
+ * Supplier's own product (includes raw availability status so UI can render
+ * a toggle without re-parsing the localized label). C4b θα χρησιμοποιήσει
+ * το `availabilityStatus` για mutation.
+ */
+export type SupplierOwnProduct = {
+  id: string;
+  name: string;
+  description: string | null;
+  unit: string;
+  price: string;
+  priceEur: string;
+  availability: "Άμεσα διαθέσιμο" | "Περιορισμένο";
+  availabilityStatus: "immediate" | "limited";
+  category: string;
+};
+
+export type SupplierOwnCatalog = {
+  supplierId: string | null;
+  supplierName: string | null;
+  products: SupplierOwnProduct[];
+};
+
 export const horecaQueryKeys = {
   supplierCategories: ["horeca", "supplierCategories"] as const,
   suppliers: (category?: string) => ["horeca", "suppliers", category ?? "all"] as const,
@@ -14,6 +37,7 @@ export const horecaQueryKeys = {
   productsBySupplier: (supplierId: number) => ["horeca", "productsBySupplier", supplierId] as const,
   productById: (id: number) => ["horeca", "product", id] as const,
   supplierOperationalSummary: ["horeca", "supplierOperationalSummary"] as const,
+  supplierOwnProducts: ["horeca", "supplierOwnProducts"] as const,
 };
 
 export function useSupplierCategoriesQuery() {
@@ -107,6 +131,26 @@ export function useProductByIdQuery(options: { id: number }) {
         `/api/catalog/products/${id}`,
       );
       return data.product;
+    },
+  });
+}
+
+/**
+ * Products belonging to the authenticated supplier's storefront. Returns an
+ * empty catalog (no listing) if the user has no `suppliers.ownerUserId` link.
+ */
+export function useSupplierOwnProductsQuery() {
+  return useQuery({
+    queryKey: horecaQueryKeys.supplierOwnProducts,
+    queryFn: async (): Promise<SupplierOwnCatalog> => {
+      try {
+        return await apiRequest<SupplierOwnCatalog>("/api/supplier/products", { auth: true });
+      } catch (e) {
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          return { supplierId: null, supplierName: null, products: [] };
+        }
+        throw e;
+      }
     },
   });
 }
