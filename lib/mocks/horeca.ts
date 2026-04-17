@@ -22,6 +22,12 @@ export type Supplier = {
   minimumOrder: string;
   verified: boolean;
   highlight: string;
+  /**
+   * Optional geo coordinates για το map preview στο supplier profile.
+   * Κρατιούνται προαιρετικά ώστε το UI να αποκρύπτει το χάρτη αν λείπουν.
+   */
+  latitude?: number;
+  longitude?: number;
 };
 
 export type Product = {
@@ -72,6 +78,9 @@ export const suppliers: Supplier[] = [
     minimumOrder: "Ελάχιστη παραγγελία 80€",
     verified: true,
     highlight: "Specialty καφέδες, γάλατα barista και συνοδευτικά για καφετέριες.",
+    // Μεταξουργείο / κέντρο Αθήνας — αντιπροσωπευτικό σημείο εμπορικού κέντρου
+    latitude: 37.9838,
+    longitude: 23.7275,
   },
   {
     id: "2",
@@ -83,6 +92,9 @@ export const suppliers: Supplier[] = [
     minimumOrder: "Ελάχιστη παραγγελία 120€",
     verified: true,
     highlight: "Φρέσκα λαχανικά, βότανα και εποχιακά προϊόντα για επαγγελματική κουζίνα.",
+    // Αγορά Μοδιάνο / κέντρο Θεσσαλονίκης
+    latitude: 40.636,
+    longitude: 22.9418,
   },
   {
     id: "3",
@@ -94,6 +106,9 @@ export const suppliers: Supplier[] = [
     minimumOrder: "Ελάχιστη παραγγελία 60€",
     verified: true,
     highlight: "Συσκευασίες take away, ποτήρια, καπάκια και υλικά καθαριότητας.",
+    // Λιμάνι Πειραιά
+    latitude: 37.9375,
+    longitude: 23.6475,
   },
 ];
 

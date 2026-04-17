@@ -480,6 +480,111 @@ describe("Horeca Source mobile MVP", () => {
     expect(suppliers).not.toContain("index === 0");
   });
 
+  it("B2: supplier list χρησιμοποιεί reusable SupplierCard με verified badge & star rating", () => {
+    const card = readFileSync(path.join(root, "components/ui/supplier-card.tsx"), "utf8");
+    const suppliers = readFileSync(path.join(root, "app/(tabs)/suppliers.tsx"), "utf8");
+
+    // Reusable component με καθαρό contract.
+    expect(card).toContain("export function SupplierCard");
+    expect(card).toContain("supplier: Supplier");
+    expect(card).toContain("onPress: () => void");
+
+    // Visual upgrades: avatar initials, verified badge με Greek copy, star rating,
+    // location/delivery/MOQ metadata, κατάληξη CTA.
+    expect(card).toContain("getInitials");
+    expect(card).toContain("checkmark.seal.fill");
+    expect(card).toContain("Εξακριβωμένος");
+    expect(card).toContain("star.fill");
+    expect(card).toContain("mappin.and.ellipse");
+    expect(card).toContain("Άνοιγμα καταλόγου");
+
+    // Η λίστα καταναλώνει το component — όχι inline duplication.
+    expect(suppliers).toContain('from "@/components/ui/supplier-card"');
+    expect(suppliers).toContain("<SupplierCard");
+    // Το παλιό random «Νέα συνεργασία» badge έχει καθαριστεί.
+    expect(suppliers).not.toContain("Νέα συνεργασία");
+  });
+
+  it("B2: supplier map — schema, mocks, API και component δουλεύουν end-to-end", () => {
+    const schema = readFileSync(path.join(root, "platform/db/schema.ts"), "utf8");
+    const mapper = readFileSync(path.join(root, "platform/app.ts"), "utf8");
+    const mocks = readFileSync(path.join(root, "lib/mocks/horeca.ts"), "utf8");
+    const seed = readFileSync(path.join(root, "scripts/seed-platform.ts"), "utf8");
+    const mapComponent = readFileSync(path.join(root, "components/ui/supplier-map.tsx"), "utf8");
+    const profile = readFileSync(path.join(root, "app/supplier-profile.tsx"), "utf8");
+
+    // Schema: real columns nullable (backwards compat για legacy suppliers).
+    expect(schema).toContain('latitude: real("latitude")');
+    expect(schema).toContain('longitude: real("longitude")');
+
+    // API: ο mapSupplierRow διοχετεύει lat/lng μόνο όταν υπάρχουν — διατηρεί
+    // καθαρό contract ώστε το client type να μένει optional.
+    expect(mapper).toMatch(/s\.latitude !== null && s\.longitude !== null/);
+
+    // Mocks: οι 3 demo suppliers έχουν συντεταγμένες (Αθήνα/Θες/νίκη/Πειραιάς).
+    expect(mocks).toContain("latitude?: number");
+    expect(mocks).toContain("longitude?: number");
+    expect(mocks).toMatch(/latitude: 37\.9838/); // Αθήνα
+    expect(mocks).toMatch(/latitude: 40\.636/); // Θεσσαλονίκη
+    expect(mocks).toMatch(/latitude: 37\.9375/); // Πειραιάς
+
+    // Seed: περνάει lat/lng στο insert με fallback σε null για υπαρκτά rows.
+    expect(seed).toContain("latitude: s.latitude ?? null");
+    expect(seed).toContain("longitude: s.longitude ?? null");
+
+    // Component: MapView + Marker από react-native-maps, non-interactive preview,
+    // tap-to-open με deep link που διαφοροποιείται ανά platform. Το require
+    // είναι defensive ώστε binary χωρίς το pod να μη σκάει (fallback UI).
+    expect(mapComponent).toContain('require("react-native-maps")');
+    expect(mapComponent).toContain("MapView");
+    expect(mapComponent).toContain("Marker");
+    expect(mapComponent).toContain("scrollEnabled={false}");
+    expect(mapComponent).toContain("zoomEnabled={false}");
+    expect(mapComponent).toContain("Linking.openURL");
+    expect(mapComponent).toContain("maps://");
+    expect(mapComponent).toContain("geo:");
+    expect(mapComponent).toContain("Άνοιγμα στους Χάρτες");
+    // Defensive fallback: αν λείπει το native module, δείχνουμε placeholder
+    // αντί για crash — προστατεύει stale Xcode builds και Expo Go. Ο έλεγχος
+    // γίνεται πριν το require μέσω UIManager ώστε να μη σκάσει το native side.
+    expect(mapComponent).toContain('UIManager');
+    expect(mapComponent).toContain('"AIRMap"');
+    expect(mapComponent).toContain("if (!mapModule)");
+    expect(mapComponent).toContain("Προβολή στους Χάρτες");
+
+    // Profile: ο χάρτης εμφανίζεται μόνο όταν υπάρχουν coords — δεν δείχνουμε
+    // άδειο map section σε legacy suppliers.
+    expect(profile).toContain("SupplierMap");
+    expect(profile).toContain("supplier.latitude !== undefined && supplier.longitude !== undefined");
+  });
+
+  it("B2: supplier profile έχει hero (avatar+verified+rating), 3-stat grid και loading states", () => {
+    const profile = readFileSync(path.join(root, "app/supplier-profile.tsx"), "utf8");
+
+    // Hero hierarchy.
+    expect(profile).toContain("getInitials");
+    expect(profile).toContain("checkmark.seal.fill");
+    expect(profile).toContain("Εξακριβωμένος");
+    expect(profile).toContain("star.fill");
+
+    // 3-stat grid με κανονικά labels.
+    expect(profile).toContain("StatTile");
+    expect(profile).toContain("Κατηγορία");
+    expect(profile).toContain("Παράδοση");
+    expect(profile).toContain("MOQ");
+
+    // Loading/empty states — όχι πια σκέτο text fallback.
+    expect(profile).toContain("ActivityIndicator");
+    expect(profile).toContain("supplierLoading");
+    expect(profile).toContain("productsLoading");
+    expect(profile).toContain("Ο προμηθευτής δεν βρέθηκε.");
+    expect(profile).toContain("Ο προμηθευτής δεν έχει δημοσιεύσει ακόμη προϊόντα.");
+
+    // Section title ευθυγραμμίζεται με το νέο scope (πλήρης κατάλογος, όχι «ενδεικτικά»).
+    expect(profile).toContain("Κατάλογος προμηθευτή");
+    expect(profile).not.toContain("Ενδεικτικά προϊόντα");
+  });
+
   it("C4c: supplier μπορεί να δημιουργήσει/επεξεργαστεί/διαγράψει προϊόν μέσω role-gated endpoints", () => {
     const platform = readFileSync(path.join(root, "platform/app.ts"), "utf8");
     const queries = readFileSync(path.join(root, "lib/horeca-queries.ts"), "utf8");

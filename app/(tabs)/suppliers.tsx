@@ -4,6 +4,7 @@ import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-nativ
 
 import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
+import { SupplierCard } from "@/components/ui/supplier-card";
 import { useColors } from "@/hooks/use-colors";
 import { useSupplierCategoriesQuery, useSuppliersListQuery } from "@/lib/horeca-queries";
 
@@ -120,36 +121,13 @@ export default function SuppliersScreen() {
               </View>
             ) : (
               visibleSuppliers.map((supplier) => (
-                <TouchableOpacity
+                <SupplierCard
                   key={supplier.id}
+                  supplier={supplier}
                   onPress={() =>
                     router.push({ pathname: "/supplier-profile", params: { id: supplier.id } })
                   }
-                  className="rounded-[24px] border border-border bg-surface p-4"
-                >
-                  <View className="flex-row items-start justify-between gap-3">
-                    <View className="flex-1 gap-2">
-                      <View className="flex-row items-center gap-2">
-                        <Text className="text-base font-semibold text-foreground">{supplier.name}</Text>
-                        {supplier.verified ? (
-                          <View className="rounded-full bg-success/10 px-2 py-1">
-                            <Text className="text-[11px] font-semibold text-success">Verified</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      <Text className="text-sm text-muted">
-                        {supplier.category} · {supplier.location} · {supplier.rating.toFixed(1)}★
-                      </Text>
-                      <Text className="text-sm leading-6 text-foreground">{supplier.highlight}</Text>
-                      <Text className="text-xs font-medium text-muted">
-                        {supplier.deliveryTime} · {supplier.minimumOrder}
-                      </Text>
-                    </View>
-                    <View className="rounded-full bg-primary/10 px-3 py-2">
-                      <Text className="text-xs font-semibold text-primary">Νέα συνεργασία</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
+                />
               ))
             )}
           </View>

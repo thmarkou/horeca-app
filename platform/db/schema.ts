@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 /** Buyer or supplier account (central platform users). */
 export const users = sqliteTable("users", {
@@ -24,6 +24,10 @@ export const suppliers = sqliteTable(
     minimumOrder: text("minimum_order").notNull(),
     verified: integer("verified", { mode: "boolean" }).notNull().default(true),
     highlight: text("highlight").notNull(),
+    // Optional geographic coordinates για το map preview στο supplier profile.
+    // Nullable γιατί legacy rows μπορεί να μην έχουν — το UI γίνεται gate-άρει.
+    latitude: real("latitude"),
+    longitude: real("longitude"),
     ownerUserId: integer("owner_user_id").references(() => users.id),
   },
   (t) => [index("suppliers_category_idx").on(t.category)],

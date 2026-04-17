@@ -142,6 +142,11 @@ function mapSupplierRow(s: typeof suppliers.$inferSelect) {
     minimumOrder: s.minimumOrder,
     verified: s.verified,
     highlight: s.highlight,
+    // Παραλείπουμε τα πεδία αν είναι null ώστε το client type (optional) να
+    // παραμένει μη-undefined accidentally — διατηρούμε wire contract καθαρό.
+    ...(s.latitude !== null && s.longitude !== null
+      ? { latitude: s.latitude, longitude: s.longitude }
+      : {}),
   };
 }
 
@@ -642,6 +647,10 @@ function mapSubscriptionRow(row: {
 /**
  * Επιστρέφει (και lazy-creates) το subscription record του authenticated user.
  * Το auto-create είναι safety net για users που υπήρχαν πριν το S1 migration.
+ *
+ * Επιστρέφει `null` όταν ο user δεν υπάρχει πια (π.χ. stale JWT token μετά
+ * από db re-seed). Αυτό αποτρέπει FK constraint crashes και επιτρέπει στο
+ * endpoint να επιστρέψει καθαρό 401.
  */
 async function getOrCreateSubscription(userId: number) {
   const [existing] = await db
@@ -650,6 +659,12 @@ async function getOrCreateSubscription(userId: number) {
     .where(eq(subscriptions.userId, userId))
     .limit(1);
   if (existing) return existing;
+  const [userExists] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!userExists) return null;
   const [created] = await db
     .insert(subscriptions)
     .values({ userId, plan: "free", status: "active" })
@@ -662,6 +677,9 @@ app.get("/api/me/subscription", async (c) => {
   const userId = await getAuthUserId(c);
   if (!userId) return c.json({ error: "Unauthorized" }, 401);
   const row = await getOrCreateSubscription(userId);
+  // Stale JWT: ο user έχει διαγραφεί (π.χ. db re-seed). Επιστρέφουμε 401 ώστε
+  // ο client να κάνει fallback στο default free subscription αντί να σκάσει.
+  if (!row) return c.json({ error: "User no longer exists" }, 401);
   return c.json({ subscription: mapSubscriptionRow(row) });
 });
 
@@ -698,7 +716,8 @@ app.post("/api/dev/subscription/activate", async (c) => {
   const renewsAt = new Date(now);
   renewsAt.setMonth(renewsAt.getMonth() + parsed.data.months);
 
-  await getOrCreateSubscription(userId); // ensure row exists
+  const ensured = await getOrCreateSubscription(userId);
+  if (!ensured) return c.json({ error: "User no longer exists" }, 401);
   const [updated] = await db
     .update(subscriptions)
     .set({
@@ -734,6 +753,7 @@ app.post("/api/dev/subscription/cancel", async (c) => {
   const immediate = parsed.success ? (parsed.data?.immediate ?? false) : false;
 
   const sub = await getOrCreateSubscription(userId);
+  if (!sub) return c.json({ error: "User no longer exists" }, 401);
   const now = new Date();
 
   if (immediate) {

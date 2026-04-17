@@ -37,6 +37,9 @@ const MAPPING = {
   "trash.fill": "delete",
   "lock.fill": "lock",
   "star.circle.fill": "stars",
+  "star.fill": "star",
+  "checkmark.seal.fill": "verified",
+  "mappin.and.ellipse": "location-on",
   "arrow.clockwise": "refresh",
   "arrow.right": "arrow-forward",
 } as IconMapping;

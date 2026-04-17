@@ -90,6 +90,8 @@ async function run() {
         minimumOrder: s.minimumOrder,
         verified: s.verified,
         highlight: s.highlight,
+        latitude: s.latitude ?? null,
+        longitude: s.longitude ?? null,
         ownerUserId: s.name === "Aegean Coffee Trade" ? supplierUser.id : null,
       })
       .returning();

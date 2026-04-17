@@ -4,6 +4,96 @@
 
 ---
 
+## 2026-04-17 (απόγευμα) — Φάση 1: Demo-ready MVP (B2 + testing guide + χάρτης + crash fixes)
+
+### Στόχος session
+
+Ολοκλήρωση της Φάσης 1 από το `docs/WORK_REMAINING.md`: buyer-facing polish στο supplier list / profile, εγχειρίδιο για testers, χάρτης στο προφίλ προμηθευτή, και σταθεροποίηση του app σε physical iPhone (clean Xcode build).
+
+### B2a — Reusable `SupplierCard` (`components/ui/supplier-card.tsx` + `app/(tabs)/suppliers.tsx`)
+
+- Νέο component με avatar initials, verified badge, star rating (`supplier.rating.toFixed(1)`), category tag, highlight tagline, metadata row (pin / delivery / MOQ) και CTA «Άνοιγμα καταλόγου» με chevron.
+- Αντικατέστησε το inline rendering στο suppliers tab → καθαρότερη αρχιτεκτονική, ένα σημείο αλλαγής για όλες τις οθόνες που δείχνουν supplier card.
+- Νέα icon mappings στο `IconSymbol`: `star.fill`, `checkmark.seal.fill`, `mappin.and.ellipse`.
+
+### B2b — Redesign supplier profile (`app/supplier-profile.tsx`)
+
+- Loading state με `ActivityIndicator` (αντί για κενή οθόνη κατά το fetch).
+- Hero card: 64×64 avatar με initials, όνομα, verified badge, star rating, highlight tagline, `mappin` + location.
+- 3-stat grid (`StatTile`) για Κατηγορία / Παράδοση / MOQ — ίσου πλάτους tiles, σταθερή ιεραρχία.
+- Κατάλογος προμηθευτή με product cards (όνομα, μονάδα, τιμή, availability pill, chevron).
+- Empty state για suppliers χωρίς προϊόντα («Ο προμηθευτής δεν έχει δημοσιεύσει ακόμη προϊόντα.»).
+
+### B2c — Χάρτης στο προφίλ προμηθευτή
+
+**Schema + data layer:**
+
+- `platform/db/schema.ts`: νέα nullable `real` στήλες `latitude` / `longitude` στον `suppliers` (backwards compatible με legacy rows).
+- `lib/mocks/horeca.ts`: `Supplier` type αποκτά optional lat/lng + πραγματικές συντεταγμένες για τους 3 demo suppliers (Αθήνα, Θεσσαλονίκη, Πειραιάς).
+- `scripts/seed-platform.ts`: περνάει τα νέα πεδία με `?? null` fallback ώστε supplies χωρίς geo να μην σπάνε το seed.
+- `platform/app.ts` (`mapSupplierRow`): συμπεριλαμβάνει lat/lng μόνο όταν υπάρχουν, διατηρώντας καθαρό client contract (`latitude?: number`).
+
+**Νέο component (`components/ui/supplier-map.tsx`):**
+
+- Fixed-height, non-interactive `MapView` με pin στη θέση του προμηθευτή.
+- `scrollEnabled` / `zoomEnabled` / `rotateEnabled` / `pitchEnabled` = false → δεν συγκρούεται με το parent `ScrollView`.
+- `TouchableOpacity` wrap: tap οπουδήποτε → deep link (`maps://` σε iOS, `geo:` σε Android) ανοίγει native Maps με pre-selected location.
+- Footer με location + «Άνοιγμα στους Χάρτες» CTA.
+- Ενσωμάτωση στο profile μόνο όταν `supplier.latitude` και `supplier.longitude` είναι defined.
+
+**Native dependency:**
+
+- Προστέθηκε `react-native-maps@1.20.1` (σταθερή version συμβατή με Expo SDK 54 + iOS 15.1+).
+
+### Testing guide (`docs/TESTING_GUIDE.md`)
+
+Νέο αρχείο 1 σελίδας για testers:
+
+- Demo credentials (`buyer@horeca.demo` / `supplier@horeca.demo`, κοινό password `demo1234`).
+- Πρόσβαση (δοκιμαστικό build μέσω Xcode, URL Metro/backend).
+- Buyer checklist: navigation, filters, order flow, subscription upgrade/downgrade (συμπ. «άμεση επιστροφή σε Δωρεάν» για εύκολο testing).
+- Supplier checklist: catalog CRUD (C4c), toggle availability (C4b).
+- Known demo limitations (mock billing, δεν υπάρχει real payment).
+- Bug reporting template + testing tips (db reset, IP change, Xcode rebuild).
+
+### Crash fixes (σημερινού feedback session)
+
+**1. FOREIGN KEY constraint στο `/api/me/subscription` (`platform/app.ts`)**
+
+- **Root cause**: `getOrCreateSubscription` έκανε `INSERT INTO subscriptions` με `user_id` από stale JWT token — ο user είχε διαγραφεί από προηγούμενο `db:seed`, οπότε το FK έσκαγε σε 500.
+- **Fix**: Έλεγχος ύπαρξης στο `users` table πριν το insert. Αν ο user δεν υπάρχει πια, το endpoint γυρνάει καθαρό `401`. Ο client ήδη fallback-άρει σε `DEFAULT_FREE_SUBSCRIPTION` για 401/403 — zero breakage στο UI.
+- Ίδιος guard μπήκε και στα `/api/dev/subscription/activate` και `/api/dev/subscription/cancel`.
+
+**2. Native crash στο tap προμηθευτή (`components/ui/supplier-map.tsx`)**
+
+- **Root cause**: Το `react-native-maps` εγγράφει native view manager `AIRMap`. Όταν το JS bundle τρέχει σε binary χωρίς pod installed (stale Xcode build, Expo Go), το `<MapView>` σκάει σε native invariant violation που **δεν πιάνεται από JS try/catch ούτε React ErrorBoundary** — είναι κάτω από το JS layer.
+- **Fix**: `UIManager.hasViewManagerConfig("AIRMap")` check **πριν** το `require()`. Αν το native manager λείπει, δεν αγγίζουμε καθόλου το package και δείχνουμε fallback UI (pin icon + «Προβολή στους Χάρτες» CTA με deep link).
+- Αυτό κάνει το app resilient απέναντι σε stale binaries — ο χρήστης βλέπει placeholder αντί για crash μέχρι να γίνει rebuild.
+
+### iOS rebuild (native dependency installation)
+
+- `brew install cocoapods` — bypass του macOS system Ruby 2.6 που δεν στηρίζει νέα CocoaPods (απαιτεί Ruby 3.1+). Το Homebrew φέρνει το δικό του Ruby χωρίς `sudo` / system conflicts.
+- `pod install --repo-update` για fresh lock + pickup του `react-native-maps` μέσω Expo autolinking.
+- Καθάρισμα `~/Library/Developer/Xcode/DerivedData` για να ξεπεραστεί το `MsgHandlingError: unable to initiate PIF transfer session` stale-cache bug.
+- Clean Build Folder + Run → ο διαδραστικός χάρτης φορτώνει κανονικά στο physical iPhone.
+
+### Regression tests (`tests/mobile-mvp.test.ts`)
+
+3 νέα / updated tests:
+
+- **B2: supplier list χρησιμοποιεί reusable `SupplierCard`** με verified badge & star rating.
+- **B2: supplier profile** έχει hero (avatar + verified + rating), 3-stat grid και loading states.
+- **B2: supplier map — end-to-end**: schema (lat/lng nullable real), `mapSupplierRow` conditional include, mock coordinates ανά πόλη, seed fallback σε null, component με defensive `UIManager` check + `require`, integration στο profile με guard σε undefined coords.
+
+Έλεγχοι: `pnpm check` καθαρό, `pnpm test` 39/39 passing.
+
+### Pending για επόμενη συνεδρία
+
+- Επαλήθευση end-to-end subscription flow στο iPhone μετά το clean build (`activate` / `cancel` / immediate downgrade path) — θα γίνει ταυτόχρονα με το επόμενο QA pass.
+- Φάση 2 enforcements: S5.a monthly order counter, S5.b favorites cap (χρειάζεται νέο `favorites` table), S5.c history window filter.
+
+---
+
 ## 2026-04-17 — Φάση S: Συνδρομή buyer (Model A, 2 tiers)
 
 ### Απόφαση στρατηγικής
