@@ -33,6 +33,8 @@ const MAPPING = {
   "checkmark.circle.fill": "check-circle",
   "plus.circle.fill": "add-circle",
   "plus": "add",
+  "minus": "remove",
+  "cart.fill": "shopping-cart",
   "pencil": "edit",
   "trash.fill": "delete",
   "lock.fill": "lock",

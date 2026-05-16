@@ -9,6 +9,11 @@ export function getOrderStatusClasses(status: string) {
       return "bg-warning/10 text-warning";
     case "\u039D\u03AD\u03B1":
       return "bg-surface text-muted border border-border";
+    // Terminal-error state — διακριτοποιείται από «Νέα» με destructive tone
+    // ώστε ο supplier να βλέπει αμέσως στη λίστα ποιες παραγγελίες δεν θα
+    // εκτελεστούν.
+    case "\u0391\u03BA\u03C5\u03C1\u03CE\u03B8\u03B7\u03BA\u03B5":
+      return "bg-error/10 text-error";
     default:
       return "bg-surface text-muted";
   }

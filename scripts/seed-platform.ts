@@ -5,6 +5,8 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { eq } from "drizzle-orm";
+
 async function run() {
   const root = dirname(fileURLToPath(import.meta.url));
   await import(join(root, "../scripts/load-env.mjs"));
@@ -20,7 +22,7 @@ async function run() {
     suppliers: mockSuppliers,
   } = await import("../lib/mocks/horeca");
 
-  const { users, suppliers, products, orders, subscriptions } = schema;
+  const { users, suppliers, products, orders, orderItems, subscriptions } = schema;
 
   function mockAvailabilityToDb(label: string): "immediate" | "limited" {
     return label === "Περιορισμένο" ? "limited" : "immediate";
@@ -33,11 +35,11 @@ async function run() {
     return "new";
   }
 
-  function parseTotalToDecimal(s: string): string {
-    return parsePriceToNumber(s.replace("€", "").trim());
-  }
-
   console.log("[seed] clearing tables…");
+  // Order matters: orderItems & orders κατεβαίνουν πρώτα ώστε να μη σκάει
+  // foreign-key constraint όταν διαγραφούν products / suppliers / users.
+  // (Το onDelete cascade στο orderItems→orders φροντίζει για διπλή ασφάλεια.)
+  await db.delete(orderItems);
   await db.delete(orders);
   await db.delete(products);
   await db.delete(suppliers);
@@ -114,19 +116,64 @@ async function run() {
   const supplierRows = await db.select().from(suppliers);
   const nameToId = new Map(supplierRows.map((r) => [r.name, r.id]));
 
-  console.log("[seed] demo orders for buyer…");
+  console.log("[seed] demo orders for buyer (with line items)…");
   for (const o of recentOrders) {
     const sid = nameToId.get(o.supplierName);
     if (!sid) continue;
-    await db.insert(orders).values({
-      publicId: o.id,
-      buyerId: buyer.id,
-      supplierId: sid,
-      status: mockOrderStatusToDb(o.status),
-      totalEur: parseTotalToDecimal(o.total),
-      itemCount: o.itemCount,
-      deliveryWindow: o.deliveryWindow,
-    });
+
+    // Πιάνουμε όλα τα προϊόντα του supplier ώστε να φτιάξουμε realistic
+    // line items. Παίρνουμε τα πρώτα 3 (ή λιγότερα αν δεν υπάρχουν), και
+    // μοιράζουμε το itemCount ομοιόμορφα. Έτσι το order-detail screen θα
+    // δείχνει αληθινά προϊόντα για το demo αντί για άδεια λίστα.
+    const supplierProducts = await db
+      .select()
+      .from(products)
+      .where(eq(products.supplierId, sid));
+    if (supplierProducts.length === 0) continue;
+
+    const numLines = Math.min(supplierProducts.length, 3);
+    const baseQty = Math.max(1, Math.floor(o.itemCount / numLines));
+    const remainder = o.itemCount - baseQty * numLines;
+    const lines = supplierProducts.slice(0, numLines).map((p, idx) => ({
+      p,
+      qty: baseQty + (idx === 0 ? remainder : 0),
+    }));
+
+    // Το total υπολογίζεται από τις πραγματικές τιμές προϊόντων ώστε το
+    // order summary να ταιριάζει με τα displayed line items. Αγνοούμε το
+    // mock total του recentOrders — εδώ προτεραιότητα έχει η συνέπεια.
+    const total = lines.reduce(
+      (acc, { p, qty }) => acc + Number(p.priceEur) * qty,
+      0,
+    );
+    const realItemCount = lines.reduce((acc, l) => acc + l.qty, 0);
+
+    const [orderRow] = await db
+      .insert(orders)
+      .values({
+        publicId: o.id,
+        buyerId: buyer.id,
+        supplierId: sid,
+        status: mockOrderStatusToDb(o.status),
+        totalEur: total.toFixed(2),
+        itemCount: realItemCount,
+        deliveryWindow: o.deliveryWindow,
+      })
+      .returning();
+    if (!orderRow) continue;
+
+    for (const { p, qty } of lines) {
+      const lineTotal = Number(p.priceEur) * qty;
+      await db.insert(orderItems).values({
+        orderId: orderRow.id,
+        productId: p.id,
+        productName: p.name,
+        unit: p.unit,
+        unitPriceEur: p.priceEur,
+        qty,
+        lineTotalEur: lineTotal.toFixed(2),
+      });
+    }
   }
 
   console.log("[seed] done. buyer@horeca.demo / demo1234 | supplier@horeca.demo / demo1234");

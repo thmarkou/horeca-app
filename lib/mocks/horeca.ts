@@ -23,6 +23,13 @@ export type Supplier = {
   verified: boolean;
   highlight: string;
   /**
+   * `false` όταν ο supplier μόλις εγγράφηκε και δεν έχει συμπληρώσει το προφίλ
+   * (Phase 0.6 defaults). Το UI το χρησιμοποιεί για «Νέος» pill και για να
+   * παρακάμψει το γενικό placeholder tagline. Optional για backwards compat
+   * με τα demo mock data — απουσία θεωρείται «onboarded» (rich seed data).
+   */
+  isOnboarded?: boolean;
+  /**
    * Optional geo coordinates για το map preview στο supplier profile.
    * Κρατιούνται προαιρετικά ώστε το UI να αποκρύπτει το χάρτη αν λείπουν.
    */
@@ -35,12 +42,24 @@ export type Product = {
   supplierId: string;
   name: string;
   unit: string;
+  /** Localized display string, e.g. "18,90 €". Use for UI text only. */
   price: string;
+  /**
+   * Raw unit price as number (EUR). Source of truth για cart math, total
+   * calculations και οποιαδήποτε σύγκριση τιμής. Δεν παίζει role σε display
+   * — γι' αυτό υπάρχει χωριστά από το `price`.
+   */
+  priceEur: number;
   availability: "Άμεσα διαθέσιμο" | "Περιορισμένο";
   category: string;
 };
 
-export type OrderStatus = "Νέα" | "Σε επεξεργασία" | "Καθ' οδόν" | "Ολοκληρώθηκε";
+export type OrderStatus =
+  | "Νέα"
+  | "Σε επεξεργασία"
+  | "Καθ' οδόν"
+  | "Ολοκληρώθηκε"
+  | "Ακυρώθηκε";
 
 export type Order = {
   id: string;
@@ -119,6 +138,7 @@ export const featuredProducts: Product[] = [
     name: "Brazil Santos Espresso Blend",
     unit: "1 κιλό",
     price: "18,90€",
+    priceEur: 18.9,
     availability: "Άμεσα διαθέσιμο",
     category: "Καφές",
   },
@@ -128,6 +148,7 @@ export const featuredProducts: Product[] = [
     name: "Ντομάτα αποφλοιωμένη κονκασέ",
     unit: "5 κιλά",
     price: "10,40€",
+    priceEur: 10.4,
     availability: "Άμεσα διαθέσιμο",
     category: "Πρώτες Ύλες",
   },
@@ -137,6 +158,7 @@ export const featuredProducts: Product[] = [
     name: "Ποτήρι χάρτινο διπλό 12oz",
     unit: "50 τεμ.",
     price: "3,60€",
+    priceEur: 3.6,
     availability: "Περιορισμένο",
     category: "Αναλώσιμα",
   },
@@ -146,6 +168,7 @@ export const featuredProducts: Product[] = [
     name: "Colombian Single Origin Supremo",
     unit: "250 γρ.",
     price: "9,80€",
+    priceEur: 9.8,
     availability: "Άμεσα διαθέσιμο",
     category: "Καφές",
   },
@@ -155,6 +178,7 @@ export const featuredProducts: Product[] = [
     name: "Κάψουλες espresso συμβατές (Nespresso)",
     unit: "100 τεμ.",
     price: "22,50€",
+    priceEur: 22.5,
     availability: "Άμεσα διαθέσιμο",
     category: "Καφές",
   },
@@ -164,6 +188,7 @@ export const featuredProducts: Product[] = [
     name: "Γάλα barista πλήρες 1L",
     unit: "κιβώτιο 12 τεμ.",
     price: "18,60€",
+    priceEur: 18.6,
     availability: "Άμεσα διαθέσιμο",
     category: "Καφές",
   },
@@ -173,6 +198,7 @@ export const featuredProducts: Product[] = [
     name: "Γάλα barista βρώμης 1L",
     unit: "κιβώτιο 12 τεμ.",
     price: "28,40€",
+    priceEur: 28.4,
     availability: "Περιορισμένο",
     category: "Καφές",
   },
@@ -182,6 +208,7 @@ export const featuredProducts: Product[] = [
     name: "Σιρόπι βανίλια barista",
     unit: "750 ml",
     price: "7,20€",
+    priceEur: 7.2,
     availability: "Άμεσα διαθέσιμο",
     category: "Καφές",
   },
@@ -191,6 +218,7 @@ export const featuredProducts: Product[] = [
     name: "Σκόνη κακάο premium",
     unit: "1 κιλό",
     price: "14,30€",
+    priceEur: 14.3,
     availability: "Περιορισμένο",
     category: "Καφές",
   },
@@ -200,6 +228,7 @@ export const featuredProducts: Product[] = [
     name: "Ελαιόλαδο extra παρθένο",
     unit: "5 λίτρα",
     price: "42,00€",
+    priceEur: 42,
     availability: "Άμεσα διαθέσιμο",
     category: "Πρώτες Ύλες",
   },
@@ -209,6 +238,7 @@ export const featuredProducts: Product[] = [
     name: "Αλεύρι τύπου 00",
     unit: "25 κιλά",
     price: "24,90€",
+    priceEur: 24.9,
     availability: "Περιορισμένο",
     category: "Πρώτες Ύλες",
   },
@@ -218,6 +248,7 @@ export const featuredProducts: Product[] = [
     name: "Καπάκι καπουτσίνο 12oz",
     unit: "100 τεμ.",
     price: "4,80€",
+    priceEur: 4.8,
     availability: "Άμεσα διαθέσιμο",
     category: "Αναλώσιμα",
   },
@@ -227,6 +258,7 @@ export const featuredProducts: Product[] = [
     name: "Χαρτοπετσέτες κουβέρ 24x24",
     unit: "2000 τεμ.",
     price: "19,60€",
+    priceEur: 19.6,
     availability: "Άμεσα διαθέσιμο",
     category: "Αναλώσιμα",
   },

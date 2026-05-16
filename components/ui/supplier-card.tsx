@@ -1,6 +1,7 @@
 import { Text, TouchableOpacity, View } from "react-native";
 
 import { IconSymbol } from "@/components/ui/icon-symbol";
+import { StarRating } from "@/components/ui/star-rating";
 import { useColors } from "@/hooks/use-colors";
 import type { Supplier } from "@/lib/mocks/horeca";
 
@@ -33,6 +34,11 @@ export function SupplierCard({ supplier, onPress }: SupplierCardProps) {
   const colors = useColors();
   const initials = getInitials(supplier.name);
 
+  // Onboarding state — αν λείπει το flag (legacy/mocks/προηγούμενα APIs)
+  // υποθέτουμε «onboarded» ώστε να μην μαρκάρουμε λάθος rich profiles. Ο
+  // supplier λογίζεται «Νέος» μόνο όταν ο server το λέει explicit.
+  const isFresh = supplier.isOnboarded === false;
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -53,7 +59,14 @@ export function SupplierCard({ supplier, onPress }: SupplierCardProps) {
             >
               {supplier.name}
             </Text>
-            {supplier.verified ? (
+            {/* «Νέος» badge έχει προτεραιότητα πάνω από verified (mutually
+                exclusive σε reality — νέος ⇒ δεν έχει verification ακόμη). */}
+            {isFresh ? (
+              <View className="flex-row items-center gap-1 rounded-full bg-primary/10 px-2 py-1">
+                <IconSymbol name="star.circle.fill" size={12} color={colors.primary} />
+                <Text className="text-[11px] font-semibold text-primary">Νέος</Text>
+              </View>
+            ) : supplier.verified ? (
               <View className="flex-row items-center gap-1 rounded-full bg-success/10 px-2 py-1">
                 <IconSymbol name="checkmark.seal.fill" size={12} color={colors.success} />
                 <Text className="text-[11px] font-semibold text-success">Εξακριβωμένος</Text>
@@ -61,17 +74,29 @@ export function SupplierCard({ supplier, onPress }: SupplierCardProps) {
             ) : null}
           </View>
 
-          <View className="flex-row items-center gap-1">
-            <IconSymbol name="star.fill" size={13} color={colors.warning} />
-            <Text className="text-sm font-semibold text-foreground">
-              {supplier.rating.toFixed(1)}
+          <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
+            {/* Visual stars αντί για σκέτο numeric, ώστε ο buyer να πιάνει
+                αμέσως «καλή vs μέτρια» βαθμολογία στο scrolling. Στο header
+                έχουμε ήδη «Νέος» pill, οπότε εδώ απλά κρύβουμε το rating
+                widget για να μην επαναλαμβάνεται το ίδιο signal. */}
+            {!isFresh ? <StarRating rating={supplier.rating} /> : null}
+            <Text className="text-sm text-muted">
+              {isFresh ? supplier.category : `· ${supplier.category}`}
             </Text>
-            <Text className="text-sm text-muted">· {supplier.category}</Text>
           </View>
         </View>
       </View>
 
-      <Text className="mt-3 text-sm leading-6 text-foreground">{supplier.highlight}</Text>
+      {/* Tagline rendering — παραλείπεται για fresh suppliers γιατί όλοι
+          μοιράζονται το ίδιο placeholder, οπότε στη λίστα γίνεται visual
+          spam. Όταν συμπληρώσουν το proper highlight, το tagline επιστρέφει. */}
+      {!isFresh ? (
+        <Text className="mt-3 text-sm leading-6 text-foreground">{supplier.highlight}</Text>
+      ) : (
+        <Text className="mt-3 text-sm italic leading-6 text-muted">
+          Συμπληρώνει το προφίλ του.
+        </Text>
+      )}
 
       <View className="mt-3 flex-row flex-wrap items-center gap-x-4 gap-y-1">
         <View className="flex-row items-center gap-1">

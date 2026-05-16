@@ -1,16 +1,42 @@
 import { useRouter } from "expo-router";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { useFeaturedProductsQuery } from "@/lib/horeca-queries";
+import { CartSummaryBar } from "@/components/ui/cart-summary-bar";
+import { syncedAddItem } from "@/lib/cart-sync";
+import { useFeaturedProductsQuery, useSuppliersListQuery } from "@/lib/horeca-queries";
 
 export default function CatalogScreen() {
   const router = useRouter();
   const { data: featuredProducts = [] } = useFeaturedProductsQuery({ limit: 50 });
+  // Φέρνουμε όλους τους suppliers ώστε να γνωρίζουμε ονόματα για το cart snapshot
+  // (το product δεν περιλαμβάνει το supplierName, μόνο το supplierId).
+  const { data: suppliers = [] } = useSuppliersListQuery({});
+
+  const handleAdd = (productId: string) => {
+    const product = featuredProducts.find((p) => p.id === productId);
+    if (!product) return;
+    const supplier = suppliers.find((s) => s.id === product.supplierId);
+    // void: το local update είναι sync, η server-side write-through είναι
+    // fire-and-forget (errors loggαρονται μέσα στο cart-sync, δε χρειάζεται
+    // ο consumer να τα χειριστεί).
+    void syncedAddItem({
+      productId: product.id,
+      supplierId: product.supplierId,
+      supplierName: supplier?.name ?? "Άγνωστος προμηθευτής",
+      productName: product.name,
+      unit: product.unit,
+      priceEur: product.priceEur,
+    });
+    Alert.alert("Προστέθηκε στο καλάθι", `1 × ${product.name}`, [
+      { text: "Συνέχεια αγορών", style: "cancel" },
+      { text: "Δες το καλάθι", onPress: () => router.push("/cart") },
+    ]);
+  };
 
   return (
     <ScreenContainer className="px-5 py-4" edges={["top", "bottom", "left", "right"]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 96 }}>
         <View className="gap-5 pt-2">
           <TouchableOpacity onPress={() => router.back()}>
             <Text className="text-sm font-semibold text-primary">Πίσω</Text>
@@ -51,7 +77,7 @@ export default function CatalogScreen() {
                     <Text className="text-center text-sm font-semibold text-foreground">Λεπτομέρειες</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => router.push("/cart")}
+                    onPress={() => handleAdd(product.id)}
                     className="flex-1 rounded-full bg-primary px-4 py-3"
                   >
                     <Text className="text-center text-sm font-semibold text-background">Στο καλάθι</Text>
@@ -62,6 +88,7 @@ export default function CatalogScreen() {
           </View>
         </View>
       </ScrollView>
+      <CartSummaryBar />
     </ScreenContainer>
   );
 }

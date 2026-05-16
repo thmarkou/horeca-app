@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Router } from "expo-router";
 
 import * as Auth from "@/lib/_core/auth";
+import { bootstrapCartFromServer } from "@/lib/cart-sync";
 
 export type HorecaAccountRole = "buyer" | "supplier";
 
@@ -34,6 +35,11 @@ export async function clearStoredHorecaProfile() {
 /**
  * After login or register: route by API-backed role (SecureStore) or explicit override.
  * Suppliers use dedicated tab shell `/(supplier-tabs)`.
+ *
+ * Side-effect: για buyer role, ξεκινάει cart bootstrap από server (Phase 1.2)
+ * ώστε ο χρήστης να βλέπει το cart του αμέσως μετά το login — ανεξάρτητα
+ * συσκευής. Fire-and-forget για να μη μπλοκάρει η πλοήγηση· αν αποτύχει,
+ * το local cart παραμένει όπως είναι.
  */
 export async function navigateAfterHorecaAuth(
   router: Pick<Router, "replace">,
@@ -44,5 +50,10 @@ export async function navigateAfterHorecaAuth(
     router.replace("/(supplier-tabs)");
     return;
   }
+  // Hydrate cart πριν φτάσει ο user στις buyer tabs ώστε το πρώτο
+  // CartSummaryBar / Cart screen render να βλέπει τα synced items.
+  // Δεν αναμένουμε — η αλλαγή στο Zustand store θα κάνει trigger re-render
+  // όταν τα δεδομένα φτάσουν.
+  void bootstrapCartFromServer();
   router.replace("/(tabs)");
 }

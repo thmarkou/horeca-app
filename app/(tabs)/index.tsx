@@ -3,12 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { CartSummaryBar } from "@/components/ui/cart-summary-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
 import * as Auth from "@/lib/_core/auth";
-import { getFirstName, getGreetingForDate } from "@/lib/greeting";
+import { getFirstName } from "@/lib/greeting";
 import {
   useFeaturedProductsQuery,
   useRecentOrdersQuery,
@@ -54,7 +55,9 @@ export default function HomeScreen() {
   const { data: featuredProducts = [] } = useFeaturedProductsQuery({ limit: 10 });
   const { data: recentOrders = [] } = useRecentOrdersQuery({ limit: 10 });
 
-  const greeting = getGreetingForDate();
+  // Σκόπιμα δείχνουμε μόνο το ρόλο («Buyer») αντί για χαιρετισμό + όνομα.
+  // Ο `userName` συνεχίζει να φορτώνεται για το avatar initial — αλλιώς θα
+  // δείχναμε κενό κύκλο όταν λείπει το όνομα από το profile.
   const firstName = getFirstName(userName);
   const avatarInitial = firstName.charAt(0).toUpperCase();
 
@@ -76,9 +79,7 @@ export default function HomeScreen() {
           <View className="gap-3">
             <View className="flex-row items-center justify-between">
               <View className="flex-1 pr-3">
-                <Text className="text-sm font-medium text-muted">
-                  {greeting}, {firstName}
-                </Text>
+                <Text className="text-sm font-medium text-muted">Buyer</Text>
                 <Text className="mt-1 text-[28px] font-bold leading-8 text-foreground">
                   Όλες οι προμήθειές σου σε μία ροή.
                 </Text>
@@ -311,6 +312,7 @@ export default function HomeScreen() {
           </View>
         </View>
       </ScrollView>
+      <CartSummaryBar />
     </ScreenContainer>
   );
 }

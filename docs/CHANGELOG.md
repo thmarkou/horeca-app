@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-05-17 — Φάση 1.1 (polish προμηθευτών) + Φάση 1.2 (server-side cart sync)
+
+Πλήρης ανάταξη στημένων σεναρίων χειροκίνητης δοκιμής στο **[`session-2026-05-17.md`](./session-2026-05-17.md)**.
+
+Σύντομα:
+
+- **1.1:** `isOnboarded` στο API, ρυθμίσεις `SupplierCard` / προφίλ / λίστας προμηθευτών (φόρτωση, count, καθάρισμα φίλτρων, αυστηρός έλεγχος `supplierId`).
+- **1.2:** πίνακας `cart_items`, authenticated cart API (buyers), `cart-sync.ts` με bootstrap μετά από login για buyer, έξοδος καθαρίζει τοπικό καλάθι, checkout με ροή περίληψης + προειδοποίηση MOQ χωρίς hard block· `lib/cart-pricing.ts`.
+
+---
+
 ## 2026-04-17 (απόγευμα) — Φάση 1: Demo-ready MVP (B2 + testing guide + χάρτης + crash fixes)
 
 ### Στόχος session

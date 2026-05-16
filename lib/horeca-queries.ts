@@ -38,6 +38,8 @@ export const horecaQueryKeys = {
   productById: (id: number) => ["horeca", "product", id] as const,
   supplierOperationalSummary: ["horeca", "supplierOperationalSummary"] as const,
   supplierOwnProducts: ["horeca", "supplierOwnProducts"] as const,
+  orderById: (publicId: string) => ["horeca", "order", publicId] as const,
+  supplierProfile: ["horeca", "supplierProfile"] as const,
 };
 
 export function useSupplierCategoriesQuery() {
@@ -96,10 +98,11 @@ export function useRecentOrdersQuery(options?: { limit?: number }) {
   });
 }
 
-export function useSupplierByIdQuery(options: { id: number }) {
-  const { id } = options;
+export function useSupplierByIdQuery(options: { id: number; enabled?: boolean }) {
+  const { id, enabled = true } = options;
   return useQuery({
     queryKey: horecaQueryKeys.supplierById(id),
+    enabled,
     queryFn: async (): Promise<Supplier | null> => {
       const data = await apiRequest<{ supplier: Supplier | null }>(
         `/api/catalog/suppliers/${id}`,
@@ -109,10 +112,11 @@ export function useSupplierByIdQuery(options: { id: number }) {
   });
 }
 
-export function useProductsBySupplierQuery(options: { supplierId: number }) {
-  const { supplierId } = options;
+export function useProductsBySupplierQuery(options: { supplierId: number; enabled?: boolean }) {
+  const { supplierId, enabled = true } = options;
   return useQuery({
     queryKey: horecaQueryKeys.productsBySupplier(supplierId),
+    enabled,
     queryFn: async (): Promise<Product[]> => {
       const data = await apiRequest<{ products: Product[] }>(
         `/api/catalog/suppliers/${supplierId}/products`,
@@ -350,6 +354,239 @@ export function useDeleteSupplierProductMutation() {
       }
     },
     onSettled: () => invalidateProductCaches(queryClient),
+  });
+}
+
+// ─── Order creation (POST /api/orders) ─────────────────────────────────────
+
+/**
+ * Wire payload για create — μόνο IDs & quantities. Το backend υπολογίζει
+ * τιμές/totals από DB (zero-trust). Δεν εκθέτουμε `priceEur` εδώ ώστε ο
+ * client να μην μπει σε πειρασμό να στείλει «δικιά του» τιμή.
+ */
+export type CreateOrderInput = {
+  supplierId: number;
+  items: { productId: number; qty: number }[];
+  deliveryWindow?: string;
+  notes?: string;
+};
+
+export type OrderLineItem = {
+  id: string;
+  productId: string;
+  productName: string;
+  unit: string;
+  qty: number;
+  unitPrice: string;
+  unitPriceEur: number;
+  lineTotal: string;
+  lineTotalEur: number;
+};
+
+/**
+ * Πλήρης παραγγελία με γραμμές, notes, totalEur και timestamps. Επιστρέφεται
+ * από POST /api/orders (create) ΚΑΙ GET /api/orders/:publicId (detail), οπότε
+ * το ίδιο type εξυπηρετεί και τα δύο call sites.
+ */
+export type OrderDetail = Order & {
+  publicId: string;
+  /** SQL row id του supplier — useful για navigation στο supplier-profile. */
+  supplierId: string;
+  totalEur: number;
+  notes: string | null;
+  /** Unix epoch (sec) από SQLite. Optional για backwards compat με create. */
+  createdAt?: number;
+  /**
+   * Από Φάση 0.5: ο server λέει στον client ποιον ρόλο έχει ο τρέχων user σε
+   * σχέση με αυτή την παραγγελία. Αυτό οδηγεί τα CTA buttons (supplier actions
+   * vs buyer reorder) χωρίς να χρειάζεται extra `useMe()` round-trip.
+   */
+  viewerRole: "buyer" | "supplier";
+  items: OrderLineItem[];
+};
+
+/**
+ * Wire status values — αυτά στέλνει ο client στο PATCH. Δεν περιλαμβάνεται το
+ * `new` (αρχικό status, δεν μεταβαίνει κανείς πίσω σε αυτό) ούτε terminal
+ * states γιατί ο server θα απορρίψει re-transitions με 409.
+ */
+export type OrderStatusTransition = "processing" | "in_transit" | "completed" | "cancelled";
+
+/** @deprecated Διατηρείται για συμβατότητα call-sites που import-άρανε τον παλιό τύπο. */
+export type CreatedOrder = OrderDetail;
+
+/**
+ * Δημιουργία μίας παραγγελίας. Χρησιμοποιείται από το checkout που κάνει
+ * loop ανά supplier (μία παραγγελία ανά προμηθευτή — B2B convention). Στο
+ * success invalidate-άρουμε τις order queries ώστε η νέα παραγγελία να
+ * εμφανιστεί άμεσα στο orders tab χωρίς manual refresh.
+ */
+/**
+ * Φέρνει μία παραγγελία με όλα τα line items + notes. Disabled αν δεν έχουμε
+ * `publicId` ακόμη (πχ deep-link χωρίς param). Δεν fallbackάρει σιωπηλά σε []
+ * επί 401/403/404 όπως το `recentOrders`: στο detail screen θέλουμε να ξέρουμε
+ * αν είναι "δεν βρέθηκε" vs "δεν συνδέθηκε".
+ */
+export function useOrderQuery(options: { publicId: string | undefined }) {
+  const { publicId } = options;
+  return useQuery({
+    queryKey: horecaQueryKeys.orderById(publicId ?? ""),
+    enabled: Boolean(publicId),
+    queryFn: async (): Promise<OrderDetail | null> => {
+      try {
+        const data = await apiRequest<{ order: OrderDetail }>(
+          `/api/orders/${encodeURIComponent(publicId!)}`,
+          { auth: true },
+        );
+        return data.order;
+      } catch (e) {
+        // 404 = δεν υπάρχει ή ο user δεν έχει access (το server γυρνά 404 και
+        // στις 2 περιπτώσεις για enumeration protection). Treat as "no data".
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
+  });
+}
+
+export function useCreateOrderMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateOrderInput): Promise<OrderDetail> => {
+      const data = await apiRequest<{ order: OrderDetail }>("/api/orders", {
+        method: "POST",
+        body: JSON.stringify(input),
+        auth: true,
+      });
+      return data.order;
+    },
+    onSuccess: (order) => {
+      // recentOrders δέχεται διαφορετικά limits — invalidate ολόκληρο το prefix
+      // ώστε να ξανατραβηχτούν όλα τα cached variants. Το supplier dashboard
+      // KPI summary επίσης παίρνει refresh για το «νέες παραγγελίες» count.
+      queryClient.invalidateQueries({ queryKey: ["horeca", "recentOrders"] });
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.supplierOperationalSummary });
+      // Prepopulate το per-id cache — αν ο user πατήσει αμέσως την παραγγελία
+      // από το orders tab, ανοίγει instant χωρίς round-trip.
+      queryClient.setQueryData(horecaQueryKeys.orderById(order.publicId), order);
+    },
+  });
+}
+
+// ─── Supplier profile (storefront editing) ─────────────────────────────────
+
+/**
+ * Editable fields του storefront. Όλα optional ώστε ο client να στείλει partial
+ * payload (PATCH semantics). `rating`, `verified`, `latitude/longitude` δεν
+ * εκτίθενται εδώ — δες server comments για τον λόγο.
+ */
+export type UpdateSupplierProfileInput = {
+  name?: string;
+  category?: string;
+  location?: string;
+  deliveryTime?: string;
+  minimumOrder?: string;
+  highlight?: string;
+};
+
+/**
+ * Φέρνει τα δεδομένα του storefront του τρέχοντος supplier user. 404 αν ο user
+ * δεν έχει storefront (πχ legacy account που δημιουργήθηκε πριν τη Φάση 0.6
+ * χωρίς auto-create). Δεν fallback-άρουμε σιωπηλά σε null εδώ ώστε το screen
+ * να μπορεί να δείξει «δεν βρέθηκε storefront» empty state.
+ */
+export function useSupplierProfileQuery() {
+  return useQuery({
+    queryKey: horecaQueryKeys.supplierProfile,
+    queryFn: async (): Promise<Supplier | null> => {
+      try {
+        const data = await apiRequest<{ supplier: Supplier }>("/api/supplier/profile", {
+          auth: true,
+        });
+        return data.supplier;
+      } catch (e) {
+        // 401/403 = ο user δεν είναι supplier ή χωρίς session. 404 = δεν έχει
+        // storefront. Treat all ως "no profile to show" ώστε το UI να γυρίσει
+        // empty state αντί για error toast.
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403 || e.status === 404)) {
+          return null;
+        }
+        throw e;
+      }
+    },
+  });
+}
+
+/**
+ * Ενημέρωση του supplier profile. Στο success refresh-άρουμε όλα τα places που
+ * δείχνουν supplier metadata:
+ * - per-id cache (αν κάποιος buyer το έχει ανοιχτό)
+ * - suppliers list (μπορεί να έχει αλλάξει category → reshuffle στα filters)
+ * - supplierOwnProducts (το header «X products από Y supplier» δείχνει name)
+ */
+export function useUpdateSupplierProfileMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: UpdateSupplierProfileInput): Promise<Supplier> => {
+      const data = await apiRequest<{ supplier: Supplier }>("/api/supplier/profile", {
+        method: "PATCH",
+        body: JSON.stringify(input),
+        auth: true,
+      });
+      return data.supplier;
+    },
+    onSuccess: (supplier) => {
+      queryClient.setQueryData(horecaQueryKeys.supplierProfile, supplier);
+      // per-id cache update αν τυχόν κάποιος έχει ανοιχτό το buyer-side
+      // supplier-profile screen
+      const supplierId = Number(supplier.id);
+      if (Number.isFinite(supplierId)) {
+        queryClient.setQueryData(horecaQueryKeys.supplierById(supplierId), supplier);
+      }
+      // Suppliers list δέχεται διαφορετικά category filters — invalidate
+      // ολόκληρο το prefix ώστε να ξανατραβηχτούν όλα τα cached variants.
+      queryClient.invalidateQueries({ queryKey: ["horeca", "suppliers"] });
+      // Categories list μπορεί να αλλάξει αν είναι ο μόνος supplier σε μια
+      // κατηγορία και κάνει switch.
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.supplierCategories });
+      // Το header στο supplier-tabs catalog screen τραβά το όνομα από εδώ.
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.supplierOwnProducts });
+    },
+  });
+}
+
+/**
+ * Supplier action mutation για state transitions (Accept/Reject/Mark Delivered
+ * κ.λπ.). Ο server κρατά τον πλήρη state machine — εμείς απλά στέλνουμε το
+ * επόμενο status και ενημερώνουμε το cache.
+ *
+ * Cache strategy: αντί για πλήρες invalidate που θα έκανε spinner στο detail
+ * screen, κάνουμε `setQueryData` στο per-id cache (ο server επιστρέφει το
+ * πλήρες updated order). Παράλληλα invalidate-άρουμε τη λίστα ώστε η πιθανή
+ * επαναταξινόμηση/κατηγοριοποίηση «νέες vs σε εξέλιξη» να ξανατρέξει.
+ */
+export function useUpdateOrderStatusMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      publicId: string;
+      status: OrderStatusTransition;
+    }): Promise<OrderDetail> => {
+      const data = await apiRequest<{ order: OrderDetail }>(
+        `/api/orders/${encodeURIComponent(input.publicId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status: input.status }),
+          auth: true,
+        },
+      );
+      return data.order;
+    },
+    onSuccess: (order) => {
+      queryClient.setQueryData(horecaQueryKeys.orderById(order.publicId), order);
+      queryClient.invalidateQueries({ queryKey: ["horeca", "recentOrders"] });
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.supplierOperationalSummary });
+    },
   });
 }
 

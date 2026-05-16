@@ -10,6 +10,9 @@ const ORDER_STATUS_LABEL: Record<string, string> = {
   processing: "\u03a3\u03b5 \u03b5\u03c0\u03b5\u03be\u03b5\u03c1\u03b3\u03b1\u03c3\u03af\u03b1",
   in_transit: "\u039a\u03b1\u03b8' \u03bf\u03b4\u03cc\u03bd",
   completed: "\u039f\u03bb\u03bf\u03ba\u03bb\u03b7\u03c1\u03ce\u03b8\u03b7\u03ba\u03b5",
+  // Terminal state — μπορεί να φτάσει εκεί είτε από supplier reject (Φάση 0.5)
+  // είτε από buyer cancel (μελλοντική φάση). Διατηρούμε ένα label για όλα.
+  cancelled: "\u0391\u03ba\u03c5\u03c1\u03ce\u03b8\u03b7\u03ba\u03b5",
 };
 
 export function formatOrderStatus(status: string): string {

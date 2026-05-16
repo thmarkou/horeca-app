@@ -1,15 +1,12 @@
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { EmptyState } from "@/components/ui/empty-state";
-import { IconSymbol } from "@/components/ui/icon-symbol";
 import { MetricTile } from "@/components/ui/metric-tile";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
-import * as Auth from "@/lib/_core/auth";
-import { getFirstName, getGreetingForDate } from "@/lib/greeting";
 import {
   useRecentOrdersQuery,
   useSupplierOperationalSummaryQuery,
@@ -28,23 +25,8 @@ export default function SupplierDashboardTabScreen() {
   const router = useRouter();
   const colors = useColors();
 
-  const [userName, setUserName] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const u = await Auth.getUserInfo();
-      if (!cancelled) setUserName(u?.name ?? null);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const { data: summary } = useSupplierOperationalSummaryQuery();
   const { data: recentOrders = [] } = useRecentOrdersQuery({ limit: 20 });
-
-  const greeting = getGreetingForDate();
-  const firstName = getFirstName(userName);
 
   const upcoming = useMemo(
     () => recentOrders.filter((o) => !PREVIEW_EXCLUDE.has(o.status)).slice(0, 3),
@@ -59,9 +41,7 @@ export default function SupplierDashboardTabScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
         <View className="pt-3 pb-6 gap-6">
           <View className="gap-2">
-            <Text className="text-sm font-medium text-muted">
-              {greeting}, {firstName}
-            </Text>
+            <Text className="text-sm font-medium text-muted">Supplier</Text>
             <Text className="text-[28px] font-bold leading-8 text-foreground">
               Σύνοψη ημέρας προμηθευτή.
             </Text>

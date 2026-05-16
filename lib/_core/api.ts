@@ -1,4 +1,5 @@
 import { ApiError, apiRequest } from "@/lib/api/http";
+import { clearCartLocal } from "@/lib/cart-sync";
 import { clearStoredHorecaProfile } from "@/lib/horeca-stored-role";
 
 import * as Auth from "./auth";
@@ -21,12 +22,20 @@ export async function logout(): Promise<void> {
   }
 }
 
-/** Clears remote session (best effort), local tokens, and legacy demo AsyncStorage profile. */
+/**
+ * Clears remote session (best effort), local tokens, και legacy demo
+ * AsyncStorage profile. Επιπλέον καθαρίζει το **local cart** ώστε ο επόμενος
+ * χρήστης στην ίδια συσκευή να μη βλέπει τα items του προηγούμενου
+ * (cross-user leak — bug που υπήρχε πριν τη Φάση 1.2 server-sync). Δεν
+ * αγγίζει το server cart — αυτό παραμένει intact για να ξαναφορτωθεί όταν
+ * ο user συνδεθεί ξανά από αυτή ή άλλη συσκευή.
+ */
 export async function signOut(): Promise<void> {
   await logout();
   await Auth.clearUserInfo();
   await Auth.removeSessionToken();
   await clearStoredHorecaProfile();
+  clearCartLocal();
 }
 
 export async function getMe(): Promise<AuthApiUser | null> {
