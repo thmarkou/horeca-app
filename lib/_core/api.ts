@@ -1,6 +1,8 @@
 import { ApiError, apiRequest } from "@/lib/api/http";
+import { clearActiveBuyerLocationsFromDevice } from "@/lib/active-buyer-location";
 import { clearCartLocal } from "@/lib/cart-sync";
 import { clearStoredHorecaProfile } from "@/lib/horeca-stored-role";
+import { clearAllPushTokensOnServer } from "@/lib/push-notifications";
 
 import * as Auth from "./auth";
 
@@ -28,13 +30,17 @@ export async function logout(): Promise<void> {
  * χρήστης στην ίδια συσκευή να μη βλέπει τα items του προηγούμενου
  * (cross-user leak — bug που υπήρχε πριν τη Φάση 1.2 server-sync). Δεν
  * αγγίζει το server cart — αυτό παραμένει intact για να ξαναφορτωθεί όταν
- * ο user συνδεθεί ξανά από αυτή ή άλλη συσκευή.
+ * Ο user επίσης χάνει την επιλογή active buyer location (φάση 3.1) ώστε ο
+ * επόμενος login να ξανά-συγχρονίσει από server default. **Πριν** σβηστεί το
+ * JWT, καλεί `clearAllPushTokensOnServer` ώστε να μη μείνουν Expo tokens στον server.
  */
 export async function signOut(): Promise<void> {
+  await clearAllPushTokensOnServer();
   await logout();
   await Auth.clearUserInfo();
   await Auth.removeSessionToken();
   await clearStoredHorecaProfile();
+  await clearActiveBuyerLocationsFromDevice();
   clearCartLocal();
 }
 

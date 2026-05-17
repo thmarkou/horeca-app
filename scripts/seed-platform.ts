@@ -22,7 +22,22 @@ async function run() {
     suppliers: mockSuppliers,
   } = await import("../lib/mocks/horeca");
 
-  const { users, suppliers, products, orders, orderItems, subscriptions } = schema;
+  const {
+    users,
+    suppliers,
+    products,
+    orders,
+    orderItems,
+    subscriptions,
+    favorites,
+    cartItems,
+    priceAlerts,
+    locations,
+    locationMembers,
+    locationInvites,
+    priceAlertHits,
+    userPushTokens,
+  } = schema;
 
   function mockAvailabilityToDb(label: string): "immediate" | "limited" {
     return label === "Περιορισμένο" ? "limited" : "immediate";
@@ -36,14 +51,22 @@ async function run() {
   }
 
   console.log("[seed] clearing tables…");
-  // Order matters: orderItems & orders κατεβαίνουν πρώτα ώστε να μη σκάει
-  // foreign-key constraint όταν διαγραφούν products / suppliers / users.
-  // (Το onDelete cascade στο orderItems→orders φροντίζει για διπλή ασφάλεια.)
+  // Order matters: dependents (cart_items, favorites) πρέπει να κατέβουν πριν
+  // products/suppliers ώστε το wipe να μην σκάει σε FK αν το dev DB έχει data.
+  // orderItems → orders πρώτα (ίδια λογική με πριν).
   await db.delete(orderItems);
   await db.delete(orders);
+  await db.delete(priceAlertHits);
+  await db.delete(priceAlerts);
+  await db.delete(cartItems);
+  await db.delete(favorites);
+  await db.delete(locationInvites);
+  await db.delete(locationMembers);
+  await db.delete(locations);
   await db.delete(products);
   await db.delete(suppliers);
   await db.delete(subscriptions);
+  await db.delete(userPushTokens);
   await db.delete(users);
 
   console.log("[seed] users…");
@@ -69,6 +92,22 @@ async function run() {
     .returning();
 
   if (!buyer || !supplierUser) throw new Error("Failed to insert seed users");
+
+  console.log("[seed] default buyer location…");
+  const [buyerDefaultLocation] = await db
+    .insert(locations)
+    .values({
+      ownerUserId: buyer.id,
+      name: "Κύριο κατάστημα",
+      address: "",
+    })
+    .returning();
+  if (!buyerDefaultLocation) throw new Error("Failed to insert demo buyer location");
+  await db.insert(locationMembers).values({
+    locationId: buyerDefaultLocation.id,
+    userId: buyer.id,
+    role: "owner",
+  });
 
   console.log("[seed] subscriptions (buyer=free, supplier=free)…");
   // Όλοι ξεκινούν στο free plan. Το dev-only activate endpoint (βλ.
@@ -154,6 +193,7 @@ async function run() {
         publicId: o.id,
         buyerId: buyer.id,
         supplierId: sid,
+        locationId: buyerDefaultLocation.id,
         status: mockOrderStatusToDb(o.status),
         totalEur: total.toFixed(2),
         itemCount: realItemCount,

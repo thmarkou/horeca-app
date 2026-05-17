@@ -32,7 +32,11 @@ export const horecaQueryKeys = {
   supplierCategories: ["horeca", "supplierCategories"] as const,
   suppliers: (category?: string) => ["horeca", "suppliers", category ?? "all"] as const,
   featuredProducts: (limit: number) => ["horeca", "featuredProducts", limit] as const,
-  recentOrders: (limit: number) => ["horeca", "recentOrders", limit] as const,
+  recentOrders: (limit: number, locationId?: string | null) =>
+    ["horeca", "recentOrders", limit, locationId ?? "all"] as const,
+  buyerLocations: ["horeca", "buyerLocations"] as const,
+  incomingInvitations: ["horeca", "incomingInvitations"] as const,
+  locationMembers: (locationId: string) => ["horeca", "locationMembers", locationId] as const,
   supplierById: (id: number) => ["horeca", "supplier", id] as const,
   productsBySupplier: (supplierId: number) => ["horeca", "productsBySupplier", supplierId] as const,
   productById: (id: number) => ["horeca", "product", id] as const,
@@ -40,6 +44,11 @@ export const horecaQueryKeys = {
   supplierOwnProducts: ["horeca", "supplierOwnProducts"] as const,
   orderById: (publicId: string) => ["horeca", "order", publicId] as const,
   supplierProfile: ["horeca", "supplierProfile"] as const,
+  monthlyOrderUsage: ["horeca", "monthlyOrderUsage"] as const,
+  favorites: ["horeca", "favorites"] as const,
+  priceAlerts: ["horeca", "priceAlerts"] as const,
+  notificationPreferences: ["horeca", "notificationPreferences"] as const,
+  buyerSpending: (months: 3 | 6 | 12) => ["horeca", "buyerSpending", months] as const,
 };
 
 export function useSupplierCategoriesQuery() {
@@ -77,14 +86,25 @@ export function useFeaturedProductsQuery(options?: { limit?: number }) {
   });
 }
 
-export function useRecentOrdersQuery(options?: { limit?: number }) {
+export function useRecentOrdersQuery(options?: {
+  limit?: number;
+  /** Φάση 3.1 · φίλτρο εμφάνισης μόνο για ενεργό κατάστημα του buyer· null/omit = όλα. */
+  locationId?: string | null;
+}) {
   const limit = options?.limit ?? 20;
+  const locationId =
+    typeof options?.locationId === "string" && options.locationId.length > 0
+      ? options.locationId
+      : null;
+
+  const qLoc = locationId != null ? `&locationId=${encodeURIComponent(locationId)}` : "";
+
   return useQuery({
-    queryKey: horecaQueryKeys.recentOrders(limit),
+    queryKey: horecaQueryKeys.recentOrders(limit, locationId ?? undefined),
     queryFn: async (): Promise<Order[]> => {
       try {
         const data = await apiRequest<{ orders: Order[] }>(
-          `/api/orders/recent?limit=${limit}`,
+          `/api/orders/recent?limit=${limit}${qLoc}`,
           { auth: true },
         );
         return data.orders;
@@ -95,6 +115,272 @@ export function useRecentOrdersQuery(options?: { limit?: number }) {
         throw e;
       }
     },
+  });
+}
+
+export function useFavoritesQuery() {
+  return useQuery({
+    queryKey: horecaQueryKeys.favorites,
+    queryFn: async (): Promise<Supplier[]> => {
+      try {
+        const data = await apiRequest<{ suppliers: Supplier[] }>("/api/me/favorites", {
+          auth: true,
+        });
+        return data.suppliers;
+      } catch (e) {
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          return [];
+        }
+        throw e;
+      }
+    },
+  });
+}
+
+type FavoriteSuppliersCacheSnap = { previous: Supplier[] | undefined };
+
+export function useAddFavoriteMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (supplier: Supplier) => {
+      const data = await apiRequest<{ suppliers: Supplier[] }>("/api/me/favorites", {
+        method: "POST",
+        body: JSON.stringify({ supplierId: Number(supplier.id) }),
+        auth: true,
+      });
+      return data.suppliers;
+    },
+    onMutate: async (supplier): Promise<FavoriteSuppliersCacheSnap> => {
+      await queryClient.cancelQueries({ queryKey: horecaQueryKeys.favorites });
+      const previous = queryClient.getQueryData<Supplier[]>(horecaQueryKeys.favorites);
+      queryClient.setQueryData<Supplier[]>(horecaQueryKeys.favorites, (old) => {
+        const list = old ?? [];
+        if (list.some((s) => s.id === supplier.id)) return list;
+        return [...list, supplier];
+      });
+      return { previous };
+    },
+    onError: (_e, _supplier, ctx) => {
+      queryClient.setQueryData(horecaQueryKeys.favorites, ctx?.previous);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.favorites });
+    },
+  });
+}
+
+export function useRemoveFavoriteMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (supplierId: string) => {
+      const data = await apiRequest<{ suppliers: Supplier[] }>(
+        `/api/me/favorites/${encodeURIComponent(supplierId)}`,
+        { method: "DELETE", auth: true },
+      );
+      return data.suppliers;
+    },
+    onMutate: async (supplierId): Promise<FavoriteSuppliersCacheSnap> => {
+      await queryClient.cancelQueries({ queryKey: horecaQueryKeys.favorites });
+      const previous = queryClient.getQueryData<Supplier[]>(horecaQueryKeys.favorites);
+      queryClient.setQueryData<Supplier[]>(horecaQueryKeys.favorites, (old) =>
+        (old ?? []).filter((s) => s.id !== supplierId),
+      );
+      return { previous };
+    },
+    onError: (_e, _id, ctx) => {
+      queryClient.setQueryData(horecaQueryKeys.favorites, ctx?.previous);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.favorites });
+    },
+  });
+}
+
+export type BuyerLocationWire = {
+  id: string;
+  ownerUserId: string;
+  name: string;
+  address: string;
+  role: string;
+  memberCount: number;
+  pendingInviteCount: number;
+  isOwner: boolean;
+  createdAt: number;
+};
+
+export type IncomingInvitationWire = {
+  token: string;
+  email: string;
+  locationId: string;
+  locationName: string;
+  createdAt: number;
+};
+
+function invalidateBuyerLocationBundles(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: horecaQueryKeys.buyerLocations });
+  queryClient.invalidateQueries({ queryKey: horecaQueryKeys.incomingInvitations });
+}
+
+export function useBuyerLocationsQuery(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: horecaQueryKeys.buyerLocations,
+    enabled: options?.enabled ?? true,
+    queryFn: async (): Promise<BuyerLocationWire[]> => {
+      try {
+        const data = await apiRequest<{ locations: BuyerLocationWire[] }>("/api/me/locations", {
+          auth: true,
+        });
+        return data.locations;
+      } catch (e) {
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) return [];
+        throw e;
+      }
+    },
+  });
+}
+
+export function useIncomingInvitationsQuery() {
+  return useQuery({
+    queryKey: horecaQueryKeys.incomingInvitations,
+    queryFn: async (): Promise<IncomingInvitationWire[]> => {
+      try {
+        const data = await apiRequest<{ invitations: IncomingInvitationWire[] }>(
+          "/api/me/invitations/incoming",
+          { auth: true },
+        );
+        return data.invitations;
+      } catch (e) {
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) return [];
+        throw e;
+      }
+    },
+  });
+}
+
+export function useBuyerLocationMembersQuery(options: {
+  locationId: string | undefined;
+  enabled?: boolean;
+}) {
+  const { locationId } = options;
+  return useQuery({
+    queryKey: horecaQueryKeys.locationMembers(locationId ?? ""),
+    enabled: Boolean(locationId) && (options.enabled ?? true),
+    queryFn: async () => {
+      const data = await apiRequest<{ members: { userId: string; name: string; email: string; role: string }[] }>(
+        `/api/me/locations/${encodeURIComponent(locationId!)}/members`,
+        { auth: true },
+      );
+      return data.members;
+    },
+  });
+}
+
+export function useCreateBuyerLocationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { name: string; address?: string }) => {
+      return apiRequest<{ location: BuyerLocationWire }>(`/api/me/locations`, {
+        method: "POST",
+        body: JSON.stringify(body),
+        auth: true,
+      });
+    },
+    onSuccess: () => invalidateBuyerLocationBundles(queryClient),
+  });
+}
+
+export function usePatchBuyerLocationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { locationId: string; name?: string; address?: string }) => {
+      return apiRequest<{ location: BuyerLocationWire }>(
+        `/api/me/locations/${encodeURIComponent(input.locationId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ name: input.name, address: input.address }),
+          auth: true,
+        },
+      );
+    },
+    onSuccess: () => invalidateBuyerLocationBundles(queryClient),
+  });
+}
+
+export function useDeleteBuyerLocationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (locationId: string) =>
+      apiRequest<void>(`/api/me/locations/${encodeURIComponent(locationId)}`, {
+        method: "DELETE",
+        auth: true,
+      }),
+    onSuccess: () => invalidateBuyerLocationBundles(queryClient),
+  });
+}
+
+export function useInviteToLocationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { locationId: string; email: string }) => {
+      return apiRequest(`/api/me/locations/${encodeURIComponent(input.locationId)}/invitations`, {
+        method: "POST",
+        body: JSON.stringify({ email: input.email.trim() }),
+        auth: true,
+      });
+    },
+    onSuccess: (_d, vars) => {
+      invalidateBuyerLocationBundles(queryClient);
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.locationMembers(vars.locationId) });
+    },
+  });
+}
+
+export function useRemoveTeamMemberMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { locationId: string; memberUserId: string }) =>
+      apiRequest<void>(
+        `/api/me/locations/${encodeURIComponent(input.locationId)}/members/${encodeURIComponent(input.memberUserId)}`,
+        { method: "DELETE", auth: true },
+      ),
+    onSuccess: (_v, vars) => {
+      invalidateBuyerLocationBundles(queryClient);
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.locationMembers(vars.locationId) });
+    },
+  });
+}
+
+export function useAcceptInvitationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (token: string) =>
+      apiRequest(`/api/me/invitations/accept`, {
+        method: "POST",
+        body: JSON.stringify({ token }),
+        auth: true,
+      }),
+    onSuccess: () => {
+      invalidateBuyerLocationBundles(queryClient);
+      queryClient.invalidateQueries({
+        predicate: (q) => q.queryKey[0] === "horeca" && q.queryKey[1] === "locationMembers",
+      });
+      queryClient.invalidateQueries({
+        predicate: (q) => q.queryKey[0] === "horeca" && q.queryKey[1] === "recentOrders",
+      });
+    },
+  });
+}
+
+export function useDeclineInvitationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (token: string) =>
+      apiRequest(`/api/me/invitations/decline`, {
+        method: "POST",
+        body: JSON.stringify({ token }),
+        auth: true,
+      }),
+    onSuccess: () => invalidateBuyerLocationBundles(queryClient),
   });
 }
 
@@ -369,6 +655,8 @@ export type CreateOrderInput = {
   items: { productId: number; qty: number }[];
   deliveryWindow?: string;
   notes?: string;
+  /** Φάση 3.1: buyer location tag — ο server επιτρέπει μόνο μέλη του location. */
+  locationId?: number;
 };
 
 export type OrderLineItem = {
@@ -415,12 +703,29 @@ export type OrderStatusTransition = "processing" | "in_transit" | "completed" | 
 /** @deprecated Διατηρείται για συμβατότητα call-sites που import-άρανε τον παλιό τύπο. */
 export type CreatedOrder = OrderDetail;
 
+/** Φάση 2.1: μηνιαίο μετρητή παραγγελιών buyer (Δωρεάν cap). Συνοδευτικό του `/api/me/orders/usage`. */
+export type MonthlyOrderUsage = {
+  used: number;
+  /** `null` όταν είναι Pro (= απεριόριστο). */
+  limit: number | null;
+  isUnlimited: boolean;
+  resetsAt: string;
+};
+
 /**
- * Δημιουργία μίας παραγγελίας. Χρησιμοποιείται από το checkout που κάνει
- * loop ανά supplier (μία παραγγελία ανά προμηθευτή — B2B convention). Στο
- * success invalidate-άρουμε τις order queries ώστε η νέα παραγγελία να
- * εμφανιστεί άμεσα στο orders tab χωρίς manual refresh.
+ * Φέρνει `used/limit/resetsAt` για buyer. Supplier session πάει 403 από το backend —
+ * το `(tabs)/orders` shell είναι για buyers· αν γίνεται 403 στο production,
+ * ρίχνει error· εδώ αφήνουμε το react-query default (όχι silent swallow).
  */
+export function useMonthlyOrderUsageQuery(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: horecaQueryKeys.monthlyOrderUsage,
+    enabled: options?.enabled ?? true,
+    queryFn: async (): Promise<MonthlyOrderUsage> =>
+      apiRequest<MonthlyOrderUsage>("/api/me/orders/usage", { auth: true }),
+  });
+}
+
 /**
  * Φέρνει μία παραγγελία με όλα τα line items + notes. Disabled αν δεν έχουμε
  * `publicId` ακόμη (πχ deep-link χωρίς param). Δεν fallbackάρει σιωπηλά σε []
@@ -449,6 +754,10 @@ export function useOrderQuery(options: { publicId: string | undefined }) {
   });
 }
 
+/**
+ * Δημιουργία μίας παραγγελίας. Το checkout κάνει loop ανά supplier. Στο success
+ * invalidates τις λίστες και το `/api/me/orders/usage` (Φάση 2.1).
+ */
 export function useCreateOrderMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -466,6 +775,8 @@ export function useCreateOrderMutation() {
       // KPI summary επίσης παίρνει refresh για το «νέες παραγγελίες» count.
       queryClient.invalidateQueries({ queryKey: ["horeca", "recentOrders"] });
       queryClient.invalidateQueries({ queryKey: horecaQueryKeys.supplierOperationalSummary });
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.monthlyOrderUsage });
+      queryClient.invalidateQueries({ queryKey: ["horeca", "buyerSpending"] });
       // Prepopulate το per-id cache — αν ο user πατήσει αμέσως την παραγγελία
       // από το orders tab, ανοίγει instant χωρίς round-trip.
       queryClient.setQueryData(horecaQueryKeys.orderById(order.publicId), order);
@@ -612,6 +923,179 @@ export function useSupplierOperationalSummaryQuery() {
         }
         throw e;
       }
+    },
+  });
+}
+
+// ─── Buyer price alerts (Pro · Φάση 3.2) ────────────────────────────────────
+
+/** Wire του `serializePriceAlertRow` στο `platform/app.ts`. */
+export type BuyerPriceAlertWire = {
+  id: string;
+  productId: string;
+  productName: string;
+  supplierName: string;
+  currentPriceEur: number;
+  threshold: string;
+  active: boolean;
+  armed: boolean;
+  triggeredAt: number | null;
+  createdAt: number;
+};
+
+export function usePriceAlertsQuery(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: horecaQueryKeys.priceAlerts,
+    enabled: options?.enabled ?? true,
+    queryFn: async (): Promise<BuyerPriceAlertWire[]> => {
+      try {
+        const data = await apiRequest<{ alerts: BuyerPriceAlertWire[] }>("/api/me/price-alerts", {
+          auth: true,
+        });
+        return data.alerts;
+      } catch (e) {
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          return [];
+        }
+        throw e;
+      }
+    },
+  });
+}
+
+export function useCreatePriceAlertMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { productId: number; thresholdEur: number }): Promise<BuyerPriceAlertWire> => {
+      const data = await apiRequest<{ alert: BuyerPriceAlertWire }>("/api/me/price-alerts", {
+        method: "POST",
+        body: JSON.stringify({
+          productId: input.productId,
+          thresholdEur: input.thresholdEur,
+        }),
+        auth: true,
+      });
+      return data.alert;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.priceAlerts });
+    },
+  });
+}
+
+export type UpdatePriceAlertMutationInput = {
+  id: string;
+  thresholdEur?: number;
+  active?: boolean;
+};
+
+export function useUpdatePriceAlertMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: UpdatePriceAlertMutationInput): Promise<BuyerPriceAlertWire> => {
+      const patch: Record<string, unknown> = {};
+      if (input.thresholdEur !== undefined) patch.thresholdEur = input.thresholdEur;
+      if (input.active !== undefined) patch.active = input.active;
+
+      const data = await apiRequest<{ alert: BuyerPriceAlertWire }>(
+        `/api/me/price-alerts/${encodeURIComponent(input.id)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+          auth: true,
+        },
+      );
+      return data.alert;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.priceAlerts });
+    },
+  });
+}
+
+export function useDeletePriceAlertMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string }) => {
+      await apiRequest(`/api/me/price-alerts/${encodeURIComponent(input.id)}`, {
+        method: "DELETE",
+        auth: true,
+      });
+      return input.id;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: horecaQueryKeys.priceAlerts });
+    },
+  });
+}
+
+/** Mirror του `BuyerSpendingPayload` στο backend (`aggregateBuyerSpending`). */
+export type BuyerSpendingPayload = {
+  grandTotalEur: number;
+  rangeFromMs: number;
+  rangeToMs: number;
+  appliedWindowLabel: string;
+  months: { monthKey: string; label: string; totalEur: number }[];
+  byCategory: { category: string; totalEur: number }[];
+  topSuppliers: { supplierId: string; supplierName: string; totalEur: number }[];
+};
+
+export type SpendingMonthsParam = 3 | 6 | 12;
+
+/** Φάση 3.3 · buyer-only — επιστροφές 403 για supplier session. */
+export function useBuyerSpendingQuery(options: { months: SpendingMonthsParam; enabled?: boolean }) {
+  const months = options.months;
+  return useQuery({
+    queryKey: horecaQueryKeys.buyerSpending(months),
+    enabled: options.enabled ?? true,
+    queryFn: async (): Promise<BuyerSpendingPayload> => {
+      const data = await apiRequest<{ spending: BuyerSpendingPayload }>(
+        `/api/me/spending?months=${months}`,
+        { auth: true },
+      );
+      return data.spending;
+    },
+  });
+}
+
+export type NotificationPreferences = {
+  priceAlertEmailDigest: boolean;
+};
+
+/**
+ * Προτιμήσεις ειδοποιήσεων (τώρα: digest email για price hits μέσω Resend).
+ */
+export function useNotificationPreferencesQuery(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: horecaQueryKeys.notificationPreferences,
+    enabled: options?.enabled ?? true,
+    queryFn: async (): Promise<NotificationPreferences> => {
+      try {
+        return await apiRequest<NotificationPreferences>("/api/me/notification-preferences", {
+          auth: true,
+        });
+      } catch (e) {
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          return { priceAlertEmailDigest: true };
+        }
+        throw e;
+      }
+    },
+  });
+}
+
+export function useUpdateNotificationPreferencesMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: NotificationPreferences): Promise<NotificationPreferences> => {
+      return apiRequest<NotificationPreferences>("/api/me/notification-preferences", {
+        method: "PATCH",
+        body: JSON.stringify(input),
+        auth: true,
+      });
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(horecaQueryKeys.notificationPreferences, data);
     },
   });
 }

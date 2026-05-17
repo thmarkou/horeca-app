@@ -15,6 +15,7 @@ import {
 import { ScreenContainer } from "@/components/screen-container";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useColors } from "@/hooks/use-colors";
+import { useBuyerActiveLocationPicker } from "@/hooks/use-buyer-active-location";
 import {
   selectGroupedBySupplier,
   selectTotalEur,
@@ -24,6 +25,7 @@ import {
 import { parseMinimumOrderEur } from "@/lib/cart-pricing";
 import { syncedClearBySupplier } from "@/lib/cart-sync";
 import { formatEur, pluralizeItems } from "@/lib/format";
+import { ApiError } from "@/lib/api/http";
 import {
   useCreateOrderMutation,
   useSuppliersListQuery,
@@ -33,7 +35,15 @@ import type { Supplier } from "@/lib/mocks/horeca";
 
 type SubmitOutcome =
   | { kind: "supplier"; supplierId: string; supplierName: string; status: "ok"; order: CreatedOrder }
-  | { kind: "supplier"; supplierId: string; supplierName: string; status: "error"; message: string };
+  | {
+      kind: "supplier";
+      supplierId: string;
+      supplierName: string;
+      status: "error";
+      message: string;
+      /** Φάση 2.1: Δωρεάν όριο 10 παραγγελιών/μήνα. */
+      code?: "monthly_limit";
+    };
 
 export default function CheckoutScreen() {
   const router = useRouter();
@@ -43,6 +53,8 @@ export default function CheckoutScreen() {
   // ολόκληρο groups array και τα notes inputs θα χάνουν εστίαση. Mutations
   // πάνε από cart-sync ώστε ο server cart να μένει συγχρονισμένος.
   const items = useCartStore((s) => s.items);
+
+  const { activeLocationNumericId } = useBuyerActiveLocationPicker();
 
   const groups = useMemo(() => selectGroupedBySupplier({ items }), [items]);
   const grandTotal = useMemo(() => selectTotalEur({ items }), [items]);
@@ -84,6 +96,7 @@ export default function CheckoutScreen() {
             qty: i.qty,
           })),
           notes: notesBySupplier[group.supplierId]?.trim() || undefined,
+          ...(activeLocationNumericId != null ? { locationId: activeLocationNumericId } : {}),
         });
         // syncedClearBySupplier κάνει local clear + DELETE στο server.
         // Δεν αναμένουμε το server delete — αν αποτύχει, την επόμενη φορά
@@ -97,12 +110,18 @@ export default function CheckoutScreen() {
           order,
         });
       } catch (e) {
+        const monthlyLimit = e instanceof ApiError && e.status === 402;
         outcomes.push({
           kind: "supplier",
           supplierId: group.supplierId,
           supplierName: group.supplierName,
           status: "error",
-          message: e instanceof Error ? e.message : "Σφάλμα δημιουργίας παραγγελίας.",
+          message: monthlyLimit
+            ? "Έφτασες το όριο 10 παραγγελιών/μήνα με το δωρεάν πλάνο."
+            : e instanceof Error
+              ? e.message
+              : "Σφάλμα δημιουργίας παραγγελίας.",
+          code: monthlyLimit ? "monthly_limit" : undefined,
         });
       }
     }
@@ -128,6 +147,19 @@ export default function CheckoutScreen() {
     }
 
     if (successes.length === 0) {
+      const allMonthlyLimit =
+        failures.length > 0 && failures.every((f) => f.code === "monthly_limit");
+      if (allMonthlyLimit) {
+        Alert.alert(
+          "Όριο παραγγελιών (Δωρεάν)",
+          "Με το δωρεάν πλάνο μπορείς έως 10 νέες παραγγελίες ανά ημερολογιακό μήνα. Αναβάθμισε σε Pro για απεριόριστες παραγγελίες.",
+          [
+            { text: "OK", style: "cancel" },
+            { text: "Δες τα πλάνα", onPress: () => router.push("/subscription") },
+          ],
+        );
+        return;
+      }
       // Πλήρης αποτυχία — το cart παραμένει intact, δίνουμε retry option.
       Alert.alert(
         "Αποτυχία αποστολής",

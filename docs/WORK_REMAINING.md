@@ -2,264 +2,100 @@
 
 Τι έχει μείνει πριν το Horeca Source χαρακτηριστεί "ολοκληρωμένο" (MVP dual-role, demo-ready, έτοιμο για TestFlight → App Store).
 
-Οι εργασίες είναι ομαδοποιημένες σε **4 φάσεις** με αύξουσα δέσμευση χρόνου:
+Οι εργασίες ήταν αρχικά ομαδοποιημένες σε **4 φάσεις** με αύξουσα δέσμευση χρόνου. **Για το demo setup (τοπικό + Xcode) οι Φάσεις 1–2 και τα 3.1/3.3 θεωρούνται κλειστά στην πράξη·** τα παρακάτω blocks διατηρούνται για αρχείο.
 
-1. **Demo-ready MVP** — τι λείπει για να κλείσει το κύκλωμα buyer/supplier και να μπορεί να γίνει demo σε πελάτη.
-2. **Ενίσχυση Pro value prop (S5 enforcements)** — ώστε το €9,90/μήνα να έχει ορατή αξία.
-3. **Νέες λειτουργίες** — απαιτούν ξεχωριστές οθόνες που δεν υπάρχουν σήμερα.
-4. **Πριν το store (TestFlight / App Store)** — πραγματικό billing + υποδομή.
+1. ~~**Demo-ready MVP**~~ ✅ (B2 polish, testers guide, προαιρετικό device checklist §1.3).
+2. ~~**S5 enforcement (μεγαλύτερο μέρος)**~~ ✅ (όριο παραγγελιών, favorites, ιστορικό 30 ημ., τοποθεσίες + invites).
+3. **Νέες λειτουργίες** — τι απομένει: κατά κύριο λόγο **3.2 price alerts**.
+4. **Πριν το store (TestFlight / App Store)** — **Φάση 4**: S6 + E3.
 
-Κάθε εργασία έχει: στόχο, περιγραφή, αρχεία/endpoints που επηρεάζονται, εκτιμώμενο scope, εξαρτήσεις.
+### Πίνακας κατάστασης demo (Μάιος 2026)
 
----
+| Ενότητα στο doc | Κατάσταση | Σύντομη υλοποίηση |
+|-----------------|-----------|-------------------|
+| 1.1 B2 suppliers | ✅ | `components/ui/supplier-card.tsx`, `app/supplier-profile.tsx`, `(tabs)/suppliers` |
+| 1.2 Testers guide | ✅ | [`docs/TESTING_GUIDE.md`](TESTING_GUIDE.md) |
+| 1.3 Subscription στο device | ⏳ hand-test | [`TESTING_GUIDE.md`](TESTING_GUIDE.md) · ενότητα **«Τι πρέπει να κάνεις εσύ»** → υποενότητα **Β** |
+| 2.1 Monthly orders cap | ✅ | `GET /api/me/orders/usage`, `(tabs)/orders`, `checkout.tsx` |
+| 2.2 Favorites server + cap | ✅ | `platform` favorites API, `FavoriteSupplierHeart` |
+| 2.3 History window | ✅ | `partitionOrdersByHistoryWindow`, `order-detail.tsx` gated |
+| 3.1 Multi-location | ✅ | `app/locations/*`, `useBuyerActiveLocationPicker`, gates από `FeatureSet` |
+| 3.3 Έξοδα / spending | ✅ | `app/spending.tsx`, `GET /api/me/spending` |
+| 3.2 Price alerts | 🔲 | Ανοικτό backlog |
+| 4 Store / infra | 🔲 | S6 RevenueCat · E3 hosting |
 
-## Φάση 1 — Demo-ready MVP
-
-Αυτά είναι τα τελευταία κενά για να μπορεί το app να παρουσιαστεί πειστικά σε πελάτη/επενδυτή.
+<details>
+<summary>Αρχείο: Φάση 1 — Demo-ready MVP (ολοκληρώθηκε)</summary>
 
 ### 1.1 · `B2` Λίστα & προφίλ προμηθευτή (buyer)
 
 **Στόχος.** Ο buyer να ανοίγει τη λίστα προμηθευτών και το προφίλ μεμονωμένου προμηθευτή και να αισθάνεται ότι βλέπει «σοβαρή» B2B εφαρμογή, ισάξια με τις υπόλοιπες οθόνες της Φάσης B.
 
-**Τι υπάρχει σήμερα.** Η λίστα δουλεύει λειτουργικά (αφού μπήκαν τα ενεργά filter chips), αλλά οι κάρτες και το προφίλ μέσα είναι ακόμα «βασικά».
-
-**Τι χρειάζεται.**
-
-- **Supplier card στη λίστα:**
-  - Verified badge (pill με «✓ Εξακριβωμένος») όταν `verified === true`.
-  - Rating σε stars (★★★★☆ 4.8/5) αντί για σκέτο «4.8».
-  - Κατηγορία + τοποθεσία σε υπότιτλο, delivery time + minimum order σε metadata row.
-  - Highlight phrase (π.χ. «Ελληνικός καφές από 1970») σαν tagline.
-  - CTAs: «Άνοιγμα καταλόγου» (primary) + «Αποθήκευση» (αγαπημένο, αν δεν υπάρχει ήδη).
-- **Supplier profile (`app/supplier-profile.tsx`):**
-  - Hero με όνομα, κατηγορία, rating, verified badge, highlight.
-  - Stats row: χρόνια συνεργασίας / παραδόσεις / rating.
-  - Sections: «Προϊόντα» (grid από `useProductsBySupplierQuery`), «Πολιτική παράδοσης» (static text από supplier record), «Επικοινωνία» (placeholder μέχρι E3).
-  - Empty/loading/error states ομοιόμορφα με τα υπόλοιπα screens.
-  - CTA footer: «Ξεκίνα παραγγελία» → `/catalog?supplierId=…`.
-
-**Αρχεία που επηρεάζονται.**
-
-- `app/(tabs)/suppliers.tsx` (card upgrades)
-- `app/supplier-profile.tsx` (hero + sections)
-- Πιθανό νέο component `components/ui/supplier-card.tsx` αν η κάρτα χρησιμοποιηθεί και αλλού
-
-**Εκτιμώμενο scope.** 1–2 ώρες. Καθαρά UI, δεν απαιτεί backend αλλαγές.
-
-**Εξαρτήσεις.** Καμία.
+Οι πρωτόλειες ανάγκες (κάρτες με stars, verified/Νέος, CTAs, πλούσιο προφίλ κ.λπ.) έχουν καλυφθεί στο τρέχον κώδικα.
 
 ---
 
 ### 1.2 · Εγχειρίδιο testers (1 σελίδα)
 
-**Στόχος.** Όταν δώσεις το app σε κάποιον να δοκιμάσει (πελάτη, συνεργάτη, beta tester), να έχει **ένα μόνο αρχείο** που εξηγεί τα πάντα — χωρίς να ρωτήσει «πώς μπαίνω;».
+**Στόχος.** Ένα αρχείο για testers.
 
-**Τι χρειάζεται (νέο αρχείο `docs/TESTING_GUIDE.md`):**
-
-1. **Πρόσβαση**
-   - URL από TestFlight / QR code (μελλοντικά).
-   - Demo credentials: `buyer@horeca.demo / demo1234`, `supplier@horeca.demo / demo1234`.
-   - Πώς αλλάζεις ρόλο (sign out → sign in με τον άλλο λογαριασμό).
-
-2. **Σενάρια δοκιμής buyer** (checklist μορφής):
-   - [ ] Login → βλέπεις 5 tabs (Αρχική, Προμηθευτές, Παραγγελίες, Αγαπημένα, Λογαριασμός).
-   - [ ] Αρχική: χαιρετισμός, γρήγορες ενέργειες, KPI strip, πρόσφατες παραγγελίες.
-   - [ ] Προμηθευτές → filter chips → «Καφές» → λίστα.
-   - [ ] Άνοιγμα καταλόγου → προϊόν → προσθήκη στο καλάθι → checkout (mock).
-   - [ ] Λογαριασμός → Συνδρομή → Αναβάθμιση σε Pro → export ξεκλειδώνεται.
-
-3. **Σενάρια δοκιμής supplier:**
-   - [ ] Login → 4 tabs (Πίνακας, Παραγγελίες, Κατάλογος, Λογαριασμός).
-   - [ ] Κατάλογος → «+ Νέο προϊόν» → validation errors → αποθήκευση.
-   - [ ] Κατάλογος → Επεξεργασία προϊόντος → αλλαγή τιμής → αποθήκευση.
-   - [ ] Toggle availability → ενημερώνεται αμέσως.
-   - [ ] Παραγγελίες → φίλτρα → άνοιγμα παραγγελίας.
-
-4. **Πώς αναφέρεις bug.**
-   - GitHub Issues link ή email.
-   - Τι να συμπεριλάβει: screenshot, βήματα, iOS version, συσκευή.
-
-5. **Γνωστά όρια του demo.**
-   - Η αναβάθμιση συνδρομής είναι προσομοίωση (όχι πραγματική χρέωση).
-   - Το backend τρέχει σε dev server, μπορεί να πέσει.
-   - Δεν υπάρχουν ακόμη push notifications.
-
-**Αρχεία που επηρεάζονται.** Μόνο `docs/TESTING_GUIDE.md` (νέο).
-
-**Εκτιμώμενο scope.** 30 λεπτά.
-
-**Εξαρτήσεις.** Όταν έχουν κλείσει τα άλλα demo-ready items για να μη χρειαστεί ξαναγράψιμο.
+**Δείτε** [`TESTING_GUIDE.md`](TESTING_GUIDE.md).
 
 ---
 
 ### 1.3 · Επαλήθευση συνδρομής end-to-end στο iPhone
 
-**Στόχος.** Να επιβεβαιωθεί ότι η ροή της Φάσης S (Συνδρομή) λειτουργεί σε φυσική συσκευή μετά από clean Xcode build.
+**Στόχος.** Να επιβεβαιωθεί ότι η ροή συνδρομής λειτουργεί σε φυσική συσκευή μετά από clean Xcode build.
 
-**Τι δεν δούλεψε σε προηγούμενο session.** Το JS bundle του Xcode build δεν φορτώθηκε σωστά — ο χρήστης έβλεπε παλιό state, παρότι είχαν γίνει commit + push τα αρχεία. Πιθανή αιτία: Metro σε μη-default port (8091), embedded bundle stale. Χρειάζεται **Clean Build Folder → Run** για να περιληφθεί το τρέχον JS.
+**Τι πρέπει να θυμάσαι από παλαιότερα sessions:** αν το Metro είναι σε μη-default port ή το embedded bundle είναι stale → **Clean Build Folder → Run**.
 
-**Checklist επαλήθευσης.**
+**Checklist επαλήθευσης** (ενημερώνεται αν αλλάξει το copy του UI):
 
 - [ ] Xcode → **Product → Clean Build Folder** (`Shift+Cmd+K`).
 - [ ] **Product → Run** (`Cmd+R`).
-- [ ] Login ως buyer.
-- [ ] Λογαριασμός → «Συνδρομή» badge δείχνει **«Δωρεάν»** (όχι πλέον «Δωρεάν demo»).
-- [ ] Πάτημα «Δες τα πλάνα» → ανοίγει `/subscription`.
-- [ ] Plan comparison cards, billing cycle toggle, Pro «Προτεινόμενο» badge φαίνονται.
-- [ ] «Αναβάθμιση — €9,90 / μήνα» → γίνεται Pro, το Pro card έχει «Τρέχον» badge.
-- [ ] Πίσω στον Λογαριασμό → badge πλέον «Pro».
-- [ ] Στο tab Παραγγελίες → «Εξαγωγή ιστορικού» **δεν** έχει «Pro» lock badge.
-- [ ] Επιστροφή στη Συνδρομή → **«Demo: επιστροφή σε Δωρεάν άμεσα»** κίτρινο button είναι ορατό.
-- [ ] Πάτημα → alert επιβεβαίωσης → confirm → γίνεσαι Free άμεσα.
-- [ ] Tab Παραγγελίες → «Εξαγωγή ιστορικού» ξανά κλειδωμένο με lock badge.
-- [ ] Tap του locked button → alert «Διαθέσιμο με Pro» με CTA «Δες τα πλάνα».
+- [ ] Login ως buyer → Λογαριασμός → ροές `/subscription`, upgrade/downgrade mock, λοκ/export στο Παραγγελίες σύμφωνα με Πλάνο (`TESTING_GUIDE`).
 
-**Αρχεία που επηρεάζονται.** Κανένα — validation μόνο.
+Αρχεία: κανένα — validation μόνο.
 
-**Εκτιμώμενο scope.** 10 λεπτά αν όλα παίζουν, 30–60 λεπτά αν προκύψει regression.
+</details>
 
-**Εξαρτήσεις.** Μόνο clean Xcode build.
+<details>
+<summary>Αρχείο: Φάση 2 — S5 enforcement (ολοκληρώθηκε για demo)</summary>
+
+### 2.1 · `S5.a` Monthly order counter
+
+Υλοποιημένο: `402 monthly_limit_reached`, `GET /api/me/orders/usage`, UI badge προειδοποίησης, handling στο checkout.
 
 ---
 
-## Φάση 2 — Ενίσχυση Pro value prop (S5 enforcements)
+### 2.2 · `S5.b` Favorites cap
 
-Τα κλειδωμένα features του Pro tier που είναι **ήδη δηλωμένα** στο `FeatureSet` αλλά **δεν είναι ακόμη ενεργά enforced** σε καμία οθόνη/backend path. Η σειρά βασίζεται σε impact-for-effort — ξεκινάμε από αυτά με τη μεγαλύτερη conversion pressure.
-
-### 2.1 · `S5.a` Monthly order counter (10/μήνα για free)
-
-**Στόχος.** Ο free buyer να βλέπει καθαρά πόσες παραγγελίες έχει κάνει αυτόν τον μήνα και να χτυπήσει σε paywall στην 11η. Αυτό είναι το πιο ορατό Pro benefit στο demo — ο user αισθάνεται το όριο.
-
-**Backend (`platform/app.ts`).**
-
-- Νέο helper `countUserOrdersThisMonth(userId: number): Promise<number>`:
-  ```ts
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
-  const [{ c }] = await db
-    .select({ c: sql<number>`count(*)` })
-    .from(orders)
-    .where(and(eq(orders.buyerId, userId), gte(orders.createdAt, startOfMonth)));
-  return Number(c ?? 0);
-  ```
-- Στο `POST /api/orders` (όταν δημιουργηθεί), πριν το insert:
-  - Αν `isPro === false` (reading από το subscription row) **και** `countUserOrdersThisMonth(userId) >= 10` → επιστρέφουμε `402 Payment Required` με `{ error: "monthly_limit_reached", limit: 10 }`.
-- Νέο endpoint `GET /api/me/orders/usage` → `{ used: N, limit: 10, resetsAt: ISO }` για το UI badge.
-
-**Client (`lib/horeca-queries.ts` + `lib/subscription.ts`).**
-
-- Νέος hook `useMonthlyOrderUsageQuery()` που χτυπά το `/api/me/orders/usage`.
-- Στο `useCreateOrderMutation`, αν το response είναι 402 με `monthly_limit_reached`, ανοίγουμε paywall Alert με CTA «Αναβάθμισε σε Pro» → `/subscription`.
-
-**UI (`app/(tabs)/orders.tsx`).**
-
-- Νέο badge στην κορυφή του tab: **«X / 10 παραγγελίες αυτόν τον μήνα»** (ή **«Απεριόριστες»** αν Pro).
-- Όταν `X >= 8` (80% του ορίου), το badge γίνεται warning color με μικρό text «Κοντά στο όριο».
-- Όταν `X === 10`, inline info card «Έφτασες στο όριο. Αναβάθμισε σε Pro για απεριόριστες παραγγελίες» με CTA.
-
-**Αρχεία που επηρεάζονται.**
-
-- `platform/app.ts` (+15 γραμμές)
-- `lib/horeca-queries.ts` (+1 hook)
-- `app/(tabs)/orders.tsx` (+10 γραμμές)
-- Ενδεχομένως `app/checkout.tsx` αν πιάνουμε το 402 και εκεί
-
-**Εκτιμώμενο scope.** 2–3 ώρες.
-
-**Εξαρτήσεις.** Η Φάση S είναι ήδη σε place.
+Υλοποιημένο: πίνακας `favorites`, REST endpoints, mutations + `FavoriteSupplierHeart` με paywall/402 όταν φτάνεις στο όριο αποθηκευμένων (free tier).
 
 ---
 
-### 2.2 · `S5.b` Favorites cap (3 για free)
+### 2.3 · `S5.c` History window
 
-**Στόχος.** Free user βλέπει cap 3 στα αγαπημένα, paywall στο 4ο.
+Υλοποιημένο: φιλτράρισμα με `historyWindowDays`, paywall row, gate στο `order-detail` για χρονικά εκτός παραθύρου στο free tier.
 
-**Τι υπάρχει σήμερα.** Το tab «Αγαπημένα» υπάρχει αλλά δεν έχει backend cap — δεν υπάρχει καν favorites table ακόμη (τα αγαπημένα είναι τοπικό AsyncStorage state).
+</details>
 
-**Απαιτήσεις.**
-
-1. Backend migration για favorites:
-   - Νέο table `favorites` (`userId`, `supplierId`, `createdAt`, unique(userId, supplierId), cascade delete).
-   - `GET /api/me/favorites` → list
-   - `POST /api/me/favorites` → add (επιστρέφει 402 αν free και ήδη έχει 3)
-   - `DELETE /api/me/favorites/:supplierId` → remove
-2. Client:
-   - `useFavoritesQuery`, `useAddFavoriteMutation`, `useRemoveFavoriteMutation`.
-   - Optimistic updates.
-3. UI:
-   - Στην κάρτα προμηθευτή, heart icon toggle. Όταν free & ήδη 3 → `GatedAction` paywall.
-   - Badge «X / 3 αγαπημένα» για free, «X αγαπημένα» για Pro.
-
-**Αρχεία που επηρεάζονται.**
-
-- `platform/db/schema.ts` (+1 table)
-- `platform/app.ts` (+3 endpoints)
-- `lib/horeca-queries.ts` (+3 hooks)
-- `app/(tabs)/favorites.tsx` (UI)
-- `app/(tabs)/suppliers.tsx` (heart toggle στην κάρτα)
-
-**Εκτιμώμενο scope.** 3–4 ώρες.
-
-**Εξαρτήσεις.** Η Φάση S είναι ήδη σε place. Θέλει πρώτα το favorites feature να μπει ουσιαστικά (τώρα είναι ψευδο-state).
-
----
-
-### 2.3 · `S5.c` History window filter (30 μέρες για free)
-
-**Στόχος.** Free user βλέπει μόνο τις τελευταίες 30 ημέρες παραγγελιών. Οι παλαιότερες κρύβονται με «paywall row» στο τέλος της λίστας.
-
-**Απαιτήσεις.**
-
-1. Client-side filter στο `recentOrders` query με το `historyWindowDays` από `useFeatures()`.
-2. Αν `historyWindowDays === Infinity` → δείχνουμε όλες.
-3. Αν `< Infinity` και υπάρχουν παλαιότερες παραγγελίες που κόπηκαν:
-   - Inline card στο τέλος της λίστας: «+N παλαιότερες παραγγελίες. Ξεκλείδωσε πλήρες ιστορικό με Pro.» + `GatedAction`.
-
-**Αρχεία που επηρεάζονται.**
-
-- `app/(tabs)/orders.tsx` (filter logic + paywall row)
-- Πιθανώς `app/order-detail.tsx` αν πατήσει παλιά παραγγελία από URL που ξέρει
-
-**Εκτιμώμενο scope.** 1 ώρα.
-
-**Εξαρτήσεις.** Η Φάση S είναι ήδη σε place.
-
----
-
-## Φάση 3 — Νέες λειτουργίες (νέες οθόνες)
-
-Αυτά είναι **επιχειρηματικά features** που προαναγγέλθηκαν στο gating matrix αλλά δεν υπάρχει καν η οθόνη τους σήμερα. Δεν έχει νόημα να τα gate-άρουμε πριν χτιστούν.
+<details>
+<summary>Αρχείο: Φάση 3.1 Multi-location — ολοκληρώθηκε για demo</summary>
 
 ### 3.1 · `S5.d` Multi-location & team seats
 
-**Στόχος.** Ο user να μπορεί να διαχειριστεί >1 κατάστημα και >1 χρήστη ανά κατάστημα (μέχρι 5 για το Pro).
+Οι βασικές ανάγκες demo (πινάκια `locations` / μέλη / προσκλήσεις, οθόνες `app/locations/*`, ενεργό κατάστημα στην Αρχική/Παραγγελίες/Checkout, gating ανά Πλάνο) είναι στο repo. Το μέρος «πλήρης διεύθυνση email invite από μηχανικό SMTP παραγωγής» μπορεί να εμβαθυνεί στη Φάση 4 αν χρειαστεί.
 
-**Απαιτήσεις.**
-
-- **Data model**: Νέο `locations` table (`userId`, `name`, `address`), νέο `location_members` table (`locationId`, `userId`, `role`), προσαρμογή `orders` ώστε να κρατά `locationId`.
-- **Endpoints**: CRUD για locations, προσκλήσεις members (via email), αποδοχή/απόρριψη.
-- **UI**:
-  - Νέα οθόνη `app/locations/index.tsx` (λίστα), `app/locations/[id].tsx` (detail + team), `app/locations/new.tsx` (create).
-  - Επιλογέας «Active location» στη Home (αν έχεις >1).
-  - Invite flow: email → pending invite → email link → accept στο app.
-- **Gating**: Στη δημιουργία 2ης location (ή 2ου member) για free → paywall.
-
-**Αρχεία που επηρεάζονται.**
-
-- `platform/db/schema.ts`
-- `platform/app.ts` (σημαντικές προσθήκες)
-- `lib/horeca-queries.ts`
-- Νέες 3–4 οθόνες
-- Refactor σε παραγγελίες για να φιλτράρουν ανά active location
-
-**Εκτιμώμενο scope.** 2–3 μέρες. Είναι το πιο μεγάλο feature.
-
-**Εξαρτήσεις.** Email sending infrastructure (SendGrid / Resend / SMTP). Το S6 (RevenueCat) **όχι** αναγκαίο — δουλεύει με mock billing.
+</details>
 
 ---
 
-### 3.2 · `S5.e` Price alerts
+## Φάση 3 — Τι ανοίγει μετά το κλείσιμο demo
+
+**Ολοκληρωμένο:** 3.1 locations, 3.3 έξοδα (`spending`). **Ανοικτό ως επέκταση:** 3.2 price alerts παρακάτω.
+
+### 3.2 · Price alerts (`S5.e`, backlog)
 
 **Στόχος.** Ο buyer να ορίζει «Ειδοποίησέ με αν το [προϊόν] πέσει κάτω από [τιμή]».
 
@@ -276,36 +112,16 @@
 
 **Εκτιμώμενο scope.** 2–3 μέρες, εκ των οποίων 1 μέρα για push notifications (APNs cert, expo-notifications config, token registration).
 
-**Εξαρτήσεις.** Push notifications infrastructure (Apple Push Notification service).
+**Εξαρτήσεις.** Push notifications infrastructure (Apple Push Notification service). Στο repo υπάρχει ήδη plugin `expo-notifications`· το υπόλοιπο είναι υλοποίηση ροής price alerts και worker.
 
----
+<details>
+<summary>Αρχείο: 3.3 Έξοδα — ολοκληρώθηκε</summary>
 
-### 3.3 · `S5.e` Συγκριτικά κόστους (cost comparison)
+### 3.3 · Συγκριτικά κόστους / οθόνη Έξοδα
 
-**Στόχος.** Ο buyer βλέπει πόσο ξόδεψε σε προηγούμενους μήνες/έτη, ανά κατηγορία, ανά προμηθευτή — για να κάνει budgeting.
+Υπάρχουν: `GET /api/me/spending`, `app/spending.tsx`, `useSpendingQuery`, πρόσβαση από Αρχική (γρήγορη ενέργεια) και Λογαριασμό, ρυθμός εύρους συγκρίσεων ανά συνδρομή όπως ορίζει το κώδικα.
 
-**Απαιτήσεις.**
-
-- **Endpoint**: `GET /api/me/spending?groupBy=month|category|supplier&range=...` που επιστρέφει aggregated sums.
-- **UI**: Νέα οθόνη `app/spending.tsx` με:
-  - Line chart «Έξοδα ανά μήνα».
-  - Pie/bar chart «Ανά κατηγορία».
-  - Top 5 προμηθευτές με μεγαλύτερο όγκο.
-  - CSV export (gated, canExportHistory).
-- Επιλογές range (3μηνο / 6μηνο / έτος).
-
-**Library για charts.** `react-native-gifted-charts` ή `victory-native`. Επιλέγουμε το πιο ελαφρύ που δεν μπλέκει με το build pipeline του Xcode.
-
-**Αρχεία που επηρεάζονται.**
-
-- `platform/app.ts` (+1 endpoint)
-- Νέα οθόνη `app/spending.tsx`
-- `package.json` (+charting lib)
-- Νέος hook `useSpendingQuery`
-
-**Εκτιμώμενο scope.** 1–1,5 μέρα.
-
-**Εξαρτήσεις.** Καμία στο data layer (τα δεδομένα υπάρχουν). Επιλογή charting lib.
+</details>
 
 ---
 
@@ -425,22 +241,12 @@
 
 ---
 
-## Επιλογή προτεραιοτήτων
+## Επιλογή προτεραιοτήτων (μετά το κλείσιμο demo)
 
-**Αν θες να φτάσεις σε demo-ready ASAP** (1 sprint ~5 μέρες):
-
-1. Φάση 1.1 (B2 buyer polish) — 1–2h
-2. Φάση 1.3 (verify subscription στο device) — 10min + fixes
-3. Φάση 2.1 (monthly order counter) — 2–3h · **highest impact**
-4. Φάση 2.3 (history window filter) — 1h
-5. Φάση 1.2 (testing guide) — 30min
-
-**Αν στόχος είναι App Store πριν το καλοκαίρι** (~1 μήνας):
-
-- Παραπάνω + Φάση 4.2 (E3) + Φάση 4.1 (S6) + 1–2 από τις νέες λειτουργίες (προτείνω cost comparison — δείχνει ωραία σε demo).
-
-**Αν ο χρόνος είναι ακόμα πιο ελεύθερος**: όλα τα παραπάνω.
+1. **Χειροκίνητα:** Φάση 1.3 subscription στο φυσικό iPhone (βλέπε [`TESTING_GUIDE.md`](TESTING_GUIDE.md) §§1 & 6).
+2. **Backlog προϊόντος:** 3.2 price alerts αν θες πλήρες `FeatureSet` πριν App Store review.
+3. **Παραγωγή:** Φάση 4.2 (`E3` hosting/HTTPS/secrets), μετά Φάση 4.1 (`S6` RevenueCat + IAP).
 
 ---
 
-*Ενημερώθηκε: 17/4/2026 — μετά την ολοκλήρωση της Φάσης S (Subscription).*
+*Ενημερώθηκε: 17 Μαΐου 2026 — κλείσιμο demo-setup checklist· η υλοποίηση ευθυγραμμίστηκε με τον πίνακα κατάστασης στην κορυφή.*

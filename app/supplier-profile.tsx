@@ -3,6 +3,7 @@ import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "rea
 
 import { ScreenContainer } from "@/components/screen-container";
 import { CartSummaryBar } from "@/components/ui/cart-summary-bar";
+import { FavoriteSupplierHeart } from "@/components/ui/supplier-card";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { StarRating } from "@/components/ui/star-rating";
 import { SupplierMap } from "@/components/ui/supplier-map";
@@ -72,7 +73,10 @@ export default function SupplierProfileScreen() {
           ) : supplier ? (
             <>
               {/* Hero card: avatar + name + verified/Νέος + rating + tagline + 3-stat grid */}
-              <View className="rounded-[28px] border border-border bg-surface p-5">
+              <View className="relative rounded-[28px] border border-border bg-surface p-5">
+                <View className="absolute right-3 top-3 z-10" pointerEvents="box-none">
+                  <FavoriteSupplierHeart supplier={supplier} />
+                </View>
                 <View className="flex-row items-center gap-4">
                   <View className="h-16 w-16 items-center justify-center rounded-full bg-primary/10">
                     <Text className="text-xl font-bold text-primary">{getInitials(supplier.name)}</Text>
@@ -117,11 +121,32 @@ export default function SupplierProfileScreen() {
                   <Text className="text-sm font-medium text-muted">{supplier.location}</Text>
                 </View>
 
-                {/* 3-stat grid: category / delivery / MOQ — equal widths, clear labels */}
+                {/* 3-stat grid: κατηγορία / παράδοση / MOQ */}
                 <View className="mt-5 flex-row gap-2">
                   <StatTile label="Κατηγορία" value={supplier.category} />
                   <StatTile label="Παράδοση" value={supplier.deliveryTime} />
                   <StatTile label="MOQ" value={supplier.minimumOrder} />
+                </View>
+
+                {/* B2 προφίλ (WORK_REMAINING 1.1): δεύτερη σειρά αξιοπιστίας. Χωρίς ψευδή
+                    νούμερα — τα KPI παραδόσεων έρχονται όταν υπάρξει υποδομή. */}
+                <Text className="mt-5 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  Αξιοπιστία συνεργάτη
+                </Text>
+                <View className="mt-2 flex-row gap-2">
+                  <StatTile
+                    label="Βαθμολογία"
+                    value={
+                      isFresh || supplier.rating === 0
+                        ? "Σε διαμόρφωση"
+                        : `${supplier.rating.toFixed(1)} / 5`
+                    }
+                  />
+                  <StatTile
+                    label="Έτη συνεργασίας"
+                    value={isFresh ? "Νέος στη πλατφόρμα" : "Ενεργός συνεργάτης"}
+                  />
+                  <StatTile label="Παραδόσεις" value="Σύντομα διαθέσιμο KPI" />
                 </View>
               </View>
 

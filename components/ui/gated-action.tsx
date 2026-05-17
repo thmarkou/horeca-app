@@ -9,7 +9,22 @@ type GateFeature =
   | "canExportHistory"
   | "canSetPriceAlerts"
   | "canCompareCosts"
-  | "prioritySupport";
+  | "prioritySupport"
+  /** Πλήρες ιστορικό παραγγελιών (δωρεάν = τελευταίες 30 ημέρες). */
+  | "unlimitedOrderHistory"
+  /** Απεριόριστοι αποθηκευμένοι προμηθευτές (free capped στο `maxSavedSuppliers`). */
+  | "unlimitedSavedSuppliers";
+
+const DEFAULT_PAYWALL_TITLE = "Διαθέσιμο με Pro";
+const DEFAULT_PAYWALL_MESSAGE = "Αναβάθμισε σε Pro για να ξεκλειδώσεις αυτή τη λειτουργία.";
+
+/** Ιδίο UX με `<GatedAction>` locked — για programmatic paywalls (π.χ. icon heart στη λίστα). */
+export function showSubscriptionPaywallAlert(onPlansPress: () => void, title?: string, message?: string) {
+  Alert.alert(title ?? DEFAULT_PAYWALL_TITLE, message ?? DEFAULT_PAYWALL_MESSAGE, [
+    { text: "Άκυρο", style: "cancel" },
+    { text: "Δες τα πλάνα", onPress: onPlansPress },
+  ]);
+}
 
 /**
  * Generic «κλειδωμένη» ενέργεια: αν ο user έχει το feature, καλεί το `onPress`·
@@ -46,14 +61,7 @@ export function GatedAction({
       onUnlockedPress();
       return;
     }
-    Alert.alert(
-      paywallTitle ?? "Διαθέσιμο με Pro",
-      paywallMessage ?? "Αναβάθμισε σε Pro για να ξεκλειδώσεις αυτή τη λειτουργία.",
-      [
-        { text: "Άκυρο", style: "cancel" },
-        { text: "Δες τα πλάνα", onPress: () => router.push("/subscription") },
-      ],
-    );
+    showSubscriptionPaywallAlert(() => router.push("/subscription"), paywallTitle, paywallMessage);
   };
 
   const baseClass =

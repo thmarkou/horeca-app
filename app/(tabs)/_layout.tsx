@@ -6,6 +6,7 @@ import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
 import * as Auth from "@/lib/_core/auth";
+import { registerBuyerExpoPushToken } from "@/lib/push-notifications";
 
 export default function TabLayout() {
   const colors = useColors();
@@ -21,6 +22,14 @@ export default function TabLayout() {
       if (cancelled) return;
       if (user?.role === "supplier") {
         router.replace("/(supplier-tabs)");
+        return;
+      }
+      if (user?.role === "buyer") {
+        try {
+          await registerBuyerExpoPushToken();
+        } catch {
+          /* offline / missing API — όχι crash στο tab boot */
+        }
       }
     })();
     return () => {

@@ -21,6 +21,7 @@ const MAPPING = {
   "building.2.fill": "storefront",
   "bag.fill": "shopping-bag",
   "heart.fill": "favorite",
+  heart: "favorite-border",
   "person.crop.circle.fill": "account-circle",
   "bell.fill": "notifications",
   "cart.fill.badge.plus": "add-shopping-cart",

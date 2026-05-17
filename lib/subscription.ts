@@ -94,8 +94,12 @@ export type FeatureSet = {
   maxLocations: number;
   /** Επιπλέον χρήστες ανά λογαριασμό (team seats). */
   maxTeamSeats: number;
-  /** Πόσες μέρες πίσω φαίνονται στο ιστορικό. */
+  /** Πόσες μέρες πίσω φαίνονται στο ιστορικό. `Infinity` = πλήρες ιστορικό. */
   historyWindowDays: number;
+  /** Pro: πρόσβαση σε παραγγελίες παλαιότερες του δωρεάν παραθύρου ημερών. */
+  unlimitedOrderHistory: boolean;
+  /** Pro: χωρίς cap στα bookmarks προμηθευτών (Φάση 2.2). */
+  unlimitedSavedSuppliers: boolean;
   canExportHistory: boolean;
   canSetPriceAlerts: boolean;
   /** Συγκριτικά κόστους ανά μήνα/χρόνο στο dashboard. */
@@ -109,6 +113,8 @@ const FREE_FEATURES: FeatureSet = {
   maxLocations: 1,
   maxTeamSeats: 1,
   historyWindowDays: 30,
+  unlimitedOrderHistory: false,
+  unlimitedSavedSuppliers: false,
   canExportHistory: false,
   canSetPriceAlerts: false,
   canCompareCosts: false,
@@ -121,6 +127,8 @@ const PRO_FEATURES: FeatureSet = {
   maxLocations: 5,
   maxTeamSeats: 5,
   historyWindowDays: Number.POSITIVE_INFINITY,
+  unlimitedOrderHistory: true,
+  unlimitedSavedSuppliers: true,
   canExportHistory: true,
   canSetPriceAlerts: true,
   canCompareCosts: true,
@@ -194,6 +202,11 @@ export function useActivateProMutation() {
     },
     onSuccess: (subscription) => {
       queryClient.setQueryData(subscriptionQueryKeys.me, subscription);
+      queryClient.invalidateQueries({ queryKey: ["horeca", "monthlyOrderUsage"] });
+      queryClient.invalidateQueries({ queryKey: ["horeca", "favorites"] });
+      queryClient.invalidateQueries({ queryKey: ["horeca", "buyerLocations"] });
+      queryClient.invalidateQueries({ queryKey: ["horeca", "priceAlerts"] });
+      queryClient.invalidateQueries({ queryKey: ["horeca", "notificationPreferences"] });
     },
   });
 }
@@ -214,6 +227,11 @@ export function useCancelSubscriptionMutation() {
     },
     onSuccess: (subscription) => {
       queryClient.setQueryData(subscriptionQueryKeys.me, subscription);
+      queryClient.invalidateQueries({ queryKey: ["horeca", "monthlyOrderUsage"] });
+      queryClient.invalidateQueries({ queryKey: ["horeca", "favorites"] });
+      queryClient.invalidateQueries({ queryKey: ["horeca", "buyerLocations"] });
+      queryClient.invalidateQueries({ queryKey: ["horeca", "priceAlerts"] });
+      queryClient.invalidateQueries({ queryKey: ["horeca", "notificationPreferences"] });
     },
   });
 }

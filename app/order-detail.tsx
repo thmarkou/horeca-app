@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } fr
 
 import { ScreenContainer } from "@/components/screen-container";
 import { EmptyState } from "@/components/ui/empty-state";
+import { GatedAction } from "@/components/ui/gated-action";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
 import { selectGroupedBySupplier, useCartStore } from "@/lib/cart-store";
@@ -16,6 +17,8 @@ import {
   type OrderLineItem,
   type OrderStatusTransition,
 } from "@/lib/horeca-queries";
+import { cutoffMsForHistoryWindow, isOrderOutsideHistoryWindow } from "@/lib/order-history-window";
+import { useFeatures } from "@/lib/subscription";
 
 export default function OrderDetailScreen() {
   const router = useRouter();
@@ -64,7 +67,17 @@ export default function OrderDetailScreen() {
 
 function OrderDetailBody({ order }: { order: OrderDetail }) {
   const router = useRouter();
-  // Read-only cart state — mutations πάνε από cart-sync (write-through).
+  const features = useFeatures();
+  const cutoff = cutoffMsForHistoryWindow(features.historyWindowDays, Date.now());
+  const isHistoryGateLocked =
+    features.historyWindowDays < Number.POSITIVE_INFINITY &&
+    cutoff != null &&
+    isOrderOutsideHistoryWindow(order.createdAt, cutoff);
+
+  if (isHistoryGateLocked) {
+    return <LockedOlderOrderPlaceholder order={order} />;
+  }
+  // Read-only cart state — mutations πάντα από cart-sync (write-through).
   const cartItems = useCartStore((s) => s.items);
 
   // Role-driven CTAs: ο server μας λέει αν βλέπουμε σαν supplier ή buyer
@@ -152,6 +165,38 @@ function OrderDetailBody({ order }: { order: OrderDetail }) {
         </TouchableOpacity>
       )}
     </>
+  );
+}
+
+/** Φάση 2.3: δωρεάν ιστορικό — όχι πλήρη UI για παραγγελίες πέραν του παραθύρου ημερών. */
+function LockedOlderOrderPlaceholder({ order }: { order: OrderDetail }) {
+  const router = useRouter();
+
+  return (
+    <View className="gap-5">
+      <View className="rounded-[28px] border border-warning/35 bg-warning/10 p-5 gap-4">
+        <Text className="text-sm font-semibold text-foreground">Ιστορικό εκτός παραθύρου</Text>
+        <Text className="text-xs leading-5 text-muted">
+          Αυτή η παραγγελία είναι παλαιότερη από τις ημέρες που περιλαμβάνονται στο δωρεάν πλάνο. Με το Pro
+          βλέπεις πλήρες ιστορικό και εξαγωγές.
+        </Text>
+        <View className="rounded-2xl border border-border bg-surface px-4 py-3 gap-2">
+          <Text className="text-xs font-semibold uppercase tracking-wide text-muted">Σύνοψη</Text>
+          <Text className="text-base font-bold text-foreground">{order.counterpartyName}</Text>
+          <Text className="text-sm text-muted">{order.publicId}</Text>
+          <StatusPill status={order.status} className="self-start" />
+          <Text className="text-sm font-semibold text-foreground pt-2">Σύνολο · {order.total}</Text>
+        </View>
+        <GatedAction
+          feature="unlimitedOrderHistory"
+          label="Δες τα πλάνα"
+          variant="primary"
+          paywallTitle="Πλήρες ιστορικό με Pro"
+          paywallMessage="Αναβάθμισε για να δεις γραμμές παραγγελιών και ενέργειες σε όλες τις ημερομηνίες."
+          onUnlockedPress={() => router.push("/subscription")}
+        />
+      </View>
+    </View>
   );
 }
 

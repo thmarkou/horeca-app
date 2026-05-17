@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, Switch, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
@@ -8,6 +8,10 @@ import { useColors } from "@/hooks/use-colors";
 import * as Api from "@/lib/_core/api";
 import * as Auth from "@/lib/_core/auth";
 import { getFirstName } from "@/lib/greeting";
+import {
+  useNotificationPreferencesQuery,
+  useUpdateNotificationPreferencesMutation,
+} from "@/lib/horeca-queries";
 import { useSubscriptionQuery, type Subscription } from "@/lib/subscription";
 
 export default function AccountScreen() {
@@ -17,6 +21,9 @@ export default function AccountScreen() {
   const [signingOut, setSigningOut] = useState(false);
 
   const { data: subscription, isLoading: isLoadingSubscription } = useSubscriptionQuery();
+
+  const { data: notificationPrefs, isLoading: isLoadingNotifPrefs } = useNotificationPreferencesQuery();
+  const updateNotificationPrefs = useUpdateNotificationPreferencesMutation();
 
   const load = useCallback(async () => {
     setUser(await Auth.getUserInfo());
@@ -67,6 +74,71 @@ export default function AccountScreen() {
             <View className="mt-5 gap-3 border-t border-border pt-4">
               <ProfileRow label="Ρόλος" value="Κατάστημα" />
               <ProfileRow label="Μέθοδος σύνδεσης" value={user?.loginMethod ?? "email"} />
+            </View>
+          </View>
+
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Καταστήματα και ομάδα"
+            onPress={() => router.push("/locations")}
+            className="rounded-[24px] border border-border bg-surface px-5 py-4 flex-row items-center justify-between"
+          >
+            <View className="flex-1 pr-3">
+              <Text className="text-base font-bold text-foreground">Καταστήματα & ομάδα</Text>
+              <Text className="mt-1 text-sm text-muted">Πολλαπλά σημεία, προσκλήσεις staff, ενεργό κατάστημα.</Text>
+            </View>
+            <IconSymbol name="chevron.right" size={18} color={colors.muted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Ειδοποιήσεις τιμής Pro"
+            onPress={() => router.push("/price-alerts")}
+            className="rounded-[24px] border border-border bg-surface px-5 py-4 flex-row items-center justify-between"
+          >
+            <View className="flex-1 pr-3">
+              <Text className="text-base font-bold text-foreground">Ειδοποιήσεις τιμής</Text>
+              <Text className="mt-1 text-sm text-muted">Price alerts για αγορές Pro — τιμολόγιο μέχρι το όριό σου.</Text>
+            </View>
+            <IconSymbol name="chevron.right" size={18} color={colors.muted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Έξοδα ανά προμηθευτή"
+            onPress={() => router.push("/spending")}
+            className="rounded-[24px] border border-border bg-surface px-5 py-4 flex-row items-center justify-between"
+          >
+            <View className="flex-1 pr-3">
+              <Text className="text-base font-bold text-foreground">Έξοδα & σύγκριση προμηθευτών</Text>
+              <Text className="mt-1 text-sm text-muted">
+                Μηνιαίο διάγραμμα, κατά κατηγορία και κορυφαίοι προμηθευτές· εξαγωγή CSV με Pro.
+              </Text>
+            </View>
+            <IconSymbol name="chevron.right" size={18} color={colors.muted} />
+          </TouchableOpacity>
+
+          <View className="rounded-[24px] border border-border bg-surface px-5 py-4">
+            <View className="flex-row items-start justify-between gap-3">
+              <View className="flex-1 pr-2">
+                <Text className="text-base font-bold text-foreground">Email digest χτυπημάτων</Text>
+                <Text className="mt-1 text-sm text-muted">
+                  Μία συγκεντρωτική επιστολή στο {user?.email ?? "email σου"} όταν χτυπούν τα price alerts (server: Resend).
+                  Push έρχεται άμεσα αν έχεις δεχτεί ειδοποιήσεις.
+                </Text>
+              </View>
+              {isLoadingNotifPrefs ? (
+                <ActivityIndicator color={colors.muted} />
+              ) : (
+                <Switch
+                  accessibilityLabel="Ενεργοποίηση email digest για ειδοποιήσεις τιμής"
+                  value={notificationPrefs?.priceAlertEmailDigest ?? true}
+                  onValueChange={(v) => {
+                    void updateNotificationPrefs.mutateAsync({ priceAlertEmailDigest: v });
+                  }}
+                  disabled={updateNotificationPrefs.isPending}
+                />
+              )}
             </View>
           </View>
 

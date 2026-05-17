@@ -5,11 +5,13 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterTabs, type FilterTab } from "@/components/ui/filter-tabs";
-import { IconSymbol } from "@/components/ui/icon-symbol";
+import { GatedAction } from "@/components/ui/gated-action";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
+import { partitionOrdersByHistoryWindow } from "@/lib/order-history-window";
 import { useRecentOrdersQuery } from "@/lib/horeca-queries";
 import type { Order, OrderStatus } from "@/lib/mocks/horeca";
+import { useFeatures } from "@/lib/subscription";
 
 type SupplierOrderFilter = "new" | "processing" | "onTheWay" | "completed" | "all";
 
@@ -36,23 +38,42 @@ function matchesFilter(order: Order, filter: SupplierOrderFilter): boolean {
 export default function SupplierOrdersTabScreen() {
   const router = useRouter();
   const colors = useColors();
-  const { data: recentOrders = [], isLoading } = useRecentOrdersQuery({ limit: 20 });
+  const features = useFeatures();
+  const listFetchLimit =
+    features.historyWindowDays === Number.POSITIVE_INFINITY ? 20 : 100;
+  const { data: recentOrders = [], isLoading } = useRecentOrdersQuery({
+    limit: listFetchLimit,
+  });
   const [filter, setFilter] = useState<SupplierOrderFilter>("new");
+
+  const { visibleOrders, hiddenOlderCount } = useMemo(
+    () => partitionOrdersByHistoryWindow(recentOrders, features.historyWindowDays),
+    [recentOrders, features.historyWindowDays],
+  );
 
   const filterTabs = useMemo<ReadonlyArray<FilterTab<SupplierOrderFilter>>>(
     () =>
       FILTER_DEFS.map((f) => ({
         key: f.key,
         label: f.label,
-        count: recentOrders.filter((o) => matchesFilter(o, f.key)).length,
+        count: visibleOrders.filter((o) => matchesFilter(o, f.key)).length,
       })),
-    [recentOrders],
+    [visibleOrders],
   );
 
   const filtered = useMemo(
-    () => recentOrders.filter((o) => matchesFilter(o, filter)),
-    [recentOrders, filter],
+    () => visibleOrders.filter((o) => matchesFilter(o, filter)),
+    [visibleOrders, filter],
   );
+
+  const showHistoryPaywall =
+    hiddenOlderCount > 0 && features.historyWindowDays < Number.POSITIVE_INFINITY;
+
+  const onlyOlderThanHistoryWindow =
+    !isLoading &&
+    recentOrders.length > 0 &&
+    visibleOrders.length === 0 &&
+    showHistoryPaywall;
 
   return (
     <ScreenContainer className="px-5" containerClassName="bg-background">
@@ -69,11 +90,19 @@ export default function SupplierOrdersTabScreen() {
 
           <View className="gap-3 pb-2">
             {filtered.length === 0 ? (
-              <SupplierOrdersEmptyState
-                filter={filter}
-                isLoading={isLoading}
-                iconColor={colors.primary}
-              />
+              onlyOlderThanHistoryWindow ? (
+                <EmptyState
+                  icon={{ name: "clock.fill", color: colors.primary }}
+                  title={`Ορατές οι τελευταίες ${features.historyWindowDays} ημέρες (δωρεάν)`}
+                  body={`Δεν υπάρχουν εμφανίσιμες παραγγελίες σε αυτό το παράθυρο. Υπάρχουν όμως παλαιότερες που ξεκλειδώνονται με το Pro.`}
+                />
+              ) : (
+                <SupplierOrdersEmptyState
+                  filter={filter}
+                  isLoading={isLoading}
+                  iconColor={colors.primary}
+                />
+              )
             ) : (
               filtered.map((order) => (
                 <TouchableOpacity
@@ -101,6 +130,28 @@ export default function SupplierOrdersTabScreen() {
                 </TouchableOpacity>
               ))
             )}
+            {showHistoryPaywall ? (
+              <View className="rounded-[24px] border border-primary/25 bg-primary/5 p-4 gap-3">
+                <Text className="text-sm font-semibold text-foreground">
+                  +{hiddenOlderCount}{" "}
+                  {hiddenOlderCount === 1
+                    ? "παλαιότερη παραγγελία"
+                    : "παλαιότερες παραγγελίες"}{" "}
+                  (εκτός των τελευταίων {features.historyWindowDays} ημερών)
+                </Text>
+                <Text className="text-xs leading-5 text-muted">
+                  Με το Pro βλέπεις όλο το ιστορικό στην εφαρμογή χωρίς το όριο 30 ημερών.
+                </Text>
+                <GatedAction
+                  feature="unlimitedOrderHistory"
+                  label="Δες τα πλάνα"
+                  variant="primary"
+                  paywallTitle="Πλήρες ιστορικό με Pro"
+                  paywallMessage="Το Δωρεάν πλάνο δείχνει τις τελευταίες 30 ημέρες ως προς τη λίστα παραγγελιών."
+                  onUnlockedPress={() => router.push("/subscription")}
+                />
+              </View>
+            ) : null}
           </View>
         </View>
       </ScrollView>

@@ -5,7 +5,7 @@ import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View 
 import { ScreenContainer } from "@/components/screen-container";
 import { CartSummaryBar } from "@/components/ui/cart-summary-bar";
 import { IconSymbol } from "@/components/ui/icon-symbol";
-import { SupplierCard } from "@/components/ui/supplier-card";
+import { SupplierCard, FavoriteSupplierHeart } from "@/components/ui/supplier-card";
 import { useColors } from "@/hooks/use-colors";
 import { useSupplierCategoriesQuery, useSuppliersListQuery } from "@/lib/horeca-queries";
 
@@ -158,6 +158,7 @@ export default function SuppliersScreen() {
                 <SupplierCard
                   key={supplier.id}
                   supplier={supplier}
+                  favoriteAccessory={<FavoriteSupplierHeart supplier={supplier} />}
                   onPress={() =>
                     router.push({ pathname: "/supplier-profile", params: { id: supplier.id } })
                   }

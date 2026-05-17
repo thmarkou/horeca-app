@@ -33,7 +33,7 @@ const horecaApiPort =
   process.env.EXPO_PUBLIC_PLATFORM_PORT ||
   process.env.PLATFORM_PORT ||
   process.env.PORT ||
-  "3000";
+  "3010";
 const horecaApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, "").trim() ?? "";
 
 const env = {
@@ -103,6 +103,7 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     "expo-font",
+    "expo-notifications",
     [
       "expo-audio",
       {

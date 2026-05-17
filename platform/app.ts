@@ -7,9 +7,35 @@ import { cors } from "hono/cors";
 import { z } from "zod";
 
 import { db } from "./db/client";
-import { cartItems, orderItems, orders, products, subscriptions, suppliers, users } from "./db/schema";
+import {
+  cartItems,
+  favorites,
+  locationInvites,
+  locationMembers,
+  locations,
+  orderItems,
+  orders,
+  priceAlerts,
+  products,
+  subscriptions,
+  suppliers,
+  userPushTokens,
+  users,
+} from "./db/schema";
 import { hashPassword, signToken, verifyPassword, verifyToken } from "./lib/auth";
+import { aggregateBuyerSpending, type SpendingMonthsOption } from "./lib/buyer-spending";
 import { formatAvailability, formatEur, formatOrderStatus } from "./lib/format";
+
+/** ISO των `orders.created_at` για ιστορικό UI (τελευταίες N μέρες). */
+function orderCreatedAtMs(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const t = Date.parse(value);
+    if (Number.isFinite(t)) return t;
+  }
+  return Date.now();
+}
 
 const app = new Hono();
 
@@ -57,6 +83,9 @@ const NEW_SUPPLIER_DEFAULTS = {
     "\u039d\u03ad\u03bf\u03c2 \u03c0\u03c1\u03bf\u03bc\u03b7\u03b8\u03b5\u03c5\u03c4\u03ae\u03c2 \u03c3\u03c4\u03b7\u03bd \u03c0\u03bb\u03b1\u03c4\u03c6\u03cc\u03c1\u03bc\u03b1.", // Νέος προμηθευτής στην πλατφόρμα.
 } as const;
 
+/** Προκαθορισμένο όνομα 1ου καταστήματος buyer (Φάση 3.1) — συγχρονίζεται με seed. */
+const DEFAULT_BUYER_LOCATION_NAME = "\u039a\u03cd\u03c1\u03b9\u03bf \u03ba\u03b1\u03c4\u03ac\u03c3\u03c4\u03b7\u03bc\u03b1"; // Κύριο κατάστημα
+
 app.post("/api/auth/register", async (c) => {
   const parsed = registerBody.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) {
@@ -87,6 +116,25 @@ app.post("/api/auth/register", async (c) => {
     await tx
       .insert(subscriptions)
       .values({ userId: userRow.id, plan: "free", status: "active" });
+
+    // Φάση 3.1: κάθε νέος buyer παίρνει προεπιλεγμένο κατάστημα για παραγγελίες.
+    if (userRow.role === "buyer") {
+      const [loc] = await tx
+        .insert(locations)
+        .values({
+          ownerUserId: userRow.id,
+          name: DEFAULT_BUYER_LOCATION_NAME,
+          address: "",
+        })
+        .returning();
+      if (loc) {
+        await tx.insert(locationMembers).values({
+          locationId: loc.id,
+          userId: userRow.id,
+          role: "owner",
+        });
+      }
+    }
 
     // Phase 0.6: auto-create storefront για suppliers. Έτσι κάθε supplier
     // user έχει αμέσως ένα row στο `suppliers` table που τον δηλώνει ως
@@ -331,6 +379,8 @@ const createOrderBody = z.object({
   items: z.array(createOrderItemBody).min(1).max(50),
   deliveryWindow: z.string().trim().min(1).max(120).optional(),
   notes: z.string().trim().max(500).optional(),
+  /** Φάση 3.1: ποιο κατάστημα χρεώνεται — υποχρεωτικό αν ο buyer ανήκει σε location. */
+  locationId: z.number().int().positive().optional(),
 });
 
 const DEFAULT_DELIVERY_WINDOW = "\u03a3\u03c5\u03bd\u03c4\u03bf\u03bd\u03b9\u03c3\u03bc\u03cc\u03c2 \u03bc\u03b5 \u03c4\u03bf\u03bd \u03c0\u03c1\u03bf\u03bc\u03b7\u03b8\u03b5\u03c5\u03c4\u03ae";
@@ -369,6 +419,15 @@ function isAllowedTransition(from: string, to: OrderStatus): boolean {
   return allowed ? allowed.includes(to) : false;
 }
 
+async function isBuyerMemberOfLocation(buyerUserId: number, locationId: number): Promise<boolean> {
+  const [row] = await db
+    .select()
+    .from(locationMembers)
+    .where(and(eq(locationMembers.locationId, locationId), eq(locationMembers.userId, buyerUserId)))
+    .limit(1);
+  return Boolean(row);
+}
+
 app.post("/api/orders", async (c) => {
   const userId = await getAuthUserId(c);
   if (!userId) return c.json({ error: "Unauthorized" }, 401);
@@ -379,11 +438,34 @@ app.post("/api/orders", async (c) => {
     return c.json({ error: "Only buyers can place orders" }, 403);
   }
 
+  // Φάση 2.1: free buyer hard cap ανά ημερολογιακό μήνα (server local TZ).
+  const subscriptionRowEarly = await getOrCreateSubscription(userId);
+  if (!subscriptionRowEarly) return c.json({ error: "User no longer exists" }, 401);
+  const billingEarly = mapSubscriptionRow(subscriptionRowEarly);
+  if (!billingEarly.isPro) {
+    const usedThisMonth = await countBuyerOrdersSinceMonthStart(userId);
+    if (usedThisMonth >= FREE_BUYER_MONTHLY_ORDER_LIMIT) {
+      return c.json(
+        { error: "monthly_limit_reached", limit: FREE_BUYER_MONTHLY_ORDER_LIMIT },
+        402,
+      );
+    }
+  }
+
   const parsed = createOrderBody.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) {
     return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, 400);
   }
-  const { supplierId, items: itemsIn, deliveryWindow, notes } = parsed.data;
+  const { supplierId, items: itemsIn, deliveryWindow, notes, locationId: locationIdIn } = parsed.data;
+
+  let resolvedLocationId: number | null = null;
+  if (locationIdIn !== undefined) {
+    const ok = await isBuyerMemberOfLocation(userId, locationIdIn);
+    if (!ok) {
+      return c.json({ error: "Forbidden or unknown location", code: "location_forbidden" }, 403);
+    }
+    resolvedLocationId = locationIdIn;
+  }
 
   // Duplicate productIds δεν επιτρέπονται — ο client πρέπει να ομαδοποιεί
   // qty ανά μοναδικό προϊόν. Αυτό αποτρέπει «κρυφά» double rows στο order.
@@ -461,6 +543,7 @@ app.post("/api/orders", async (c) => {
         publicId,
         buyerId: userId,
         supplierId,
+        locationId: resolvedLocationId,
         status: "new",
         totalEur: totalEur.toFixed(2),
         itemCount,
@@ -495,6 +578,8 @@ app.post("/api/orders", async (c) => {
         itemCount: result.orderRow.itemCount,
         deliveryWindow: result.orderRow.deliveryWindow,
         notes: result.orderRow.notes,
+        locationId: result.orderRow.locationId != null ? String(result.orderRow.locationId) : undefined,
+        createdAt: orderCreatedAtMs(result.orderRow.createdAt),
         items: result.itemRows.map((it) => ({
           id: String(it.id),
           productId: String(it.productId),
@@ -554,8 +639,18 @@ app.get("/api/orders/recent", async (c) => {
         total: formatEur(order.totalEur),
         itemCount: order.itemCount,
         deliveryWindow: order.deliveryWindow,
+        createdAt: orderCreatedAtMs(order.createdAt),
       })),
     });
+  }
+
+  const lidRaw = c.req.query("locationId");
+  let buyerFilter = eq(orders.buyerId, userId);
+  if (lidRaw !== undefined && lidRaw !== "") {
+    const lid = Number(lidRaw);
+    if (Number.isFinite(lid) && lid >= 1) {
+      buyerFilter = and(buyerFilter, eq(orders.locationId, lid))!;
+    }
   }
 
   const rows = await db
@@ -565,7 +660,7 @@ app.get("/api/orders/recent", async (c) => {
     })
     .from(orders)
     .innerJoin(suppliers, eq(orders.supplierId, suppliers.id))
-    .where(eq(orders.buyerId, userId))
+    .where(buyerFilter)
     .orderBy(desc(orders.createdAt))
     .limit(limit);
 
@@ -578,6 +673,8 @@ app.get("/api/orders/recent", async (c) => {
       total: formatEur(order.totalEur),
       itemCount: order.itemCount,
       deliveryWindow: order.deliveryWindow,
+      ...(order.locationId != null ? { locationId: String(order.locationId) } : {}),
+      createdAt: orderCreatedAtMs(order.createdAt),
     })),
   });
 });
@@ -646,7 +743,8 @@ app.get("/api/orders/:publicId", async (c) => {
       itemCount: row.order.itemCount,
       deliveryWindow: row.order.deliveryWindow,
       notes: row.order.notes,
-      createdAt: row.order.createdAt,
+      createdAt: orderCreatedAtMs(row.order.createdAt),
+      ...(row.order.locationId != null ? { locationId: String(row.order.locationId) } : {}),
       items: items.map((it) => ({
         id: String(it.id),
         productId: String(it.productId),
@@ -755,7 +853,8 @@ app.patch("/api/orders/:publicId", async (c) => {
       itemCount: row.order.itemCount,
       deliveryWindow: row.order.deliveryWindow,
       notes: row.order.notes,
-      createdAt: row.order.createdAt,
+      createdAt: orderCreatedAtMs(row.order.createdAt),
+      ...(row.order.locationId != null ? { locationId: String(row.order.locationId) } : {}),
       items: items.map((it) => ({
         id: String(it.id),
         productId: String(it.productId),
@@ -1151,6 +1250,43 @@ const SUBSCRIPTION_STATUSES = ["active", "canceled", "expired", "trialing"] as c
 type SubscriptionPlan = (typeof SUBSCRIPTION_PLANS)[number];
 type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
+/** Free-tier cap — sync με `FREE_FEATURES.maxOrdersPerMonth` στο `lib/subscription.ts`. */
+const FREE_BUYER_MONTHLY_ORDER_LIMIT = 10;
+
+/** Free-tier favorites cap — sync με `FREE_FEATURES.maxSavedSuppliers` στο `lib/subscription.ts`. */
+const FREE_BUYER_MAX_SAVED_SUPPLIERS = 3;
+
+/** Sync με `FeatureSet.maxLocations` (`lib/subscription.ts`). */
+const FREE_BUYER_MAX_LOCATIONS_CAP = 1;
+/** Sync με Pro `FeatureSet.maxLocations`. */
+const PRO_BUYER_MAX_LOCATIONS_CAP = 5;
+
+/** Ο συνολικός αριθμός λογαριασμών (συμπ. ιδιοκτήτη) ανά κατάστημα · `maxTeamSeats`. */
+const FREE_LOCATION_TEAM_CAP = 1;
+const PRO_LOCATION_TEAM_CAP = 5;
+
+function normalizeBuyerEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function calendarMonthBoundsForUsage() {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const resetsAt = new Date(monthStart);
+  resetsAt.setMonth(resetsAt.getMonth() + 1);
+  return { monthStart, resetsAt };
+}
+
+async function countBuyerOrdersSinceMonthStart(buyerId: number): Promise<number> {
+  const { monthStart } = calendarMonthBoundsForUsage();
+  const [row] = await db
+    .select({ c: count() })
+    .from(orders)
+    .where(and(eq(orders.buyerId, buyerId), gte(orders.createdAt, monthStart)));
+  return Number(row?.c ?? 0);
+}
+
 /**
  * Public-facing subscription shape. Τα timestamps βγαίνουν ως ISO strings
  * ώστε να είναι safe σε JSON (το RN JSON.parse κρατά strings, όχι Dates).
@@ -1221,6 +1357,837 @@ app.get("/api/me/subscription", async (c) => {
   // ο client να κάνει fallback στο default free subscription αντί να σκάσει.
   if (!row) return c.json({ error: "User no longer exists" }, 401);
   return c.json({ subscription: mapSubscriptionRow(row) });
+});
+
+/**
+ * Φάση 2.1: χρήση μηνιαίου ορίου παραγγελιών για buyers (Δωρεάν = 10/μήνα).
+ * Οι Pro users βλέπουν `limit: null` και `isUnlimited: true` για το ορατό Pro benefit.
+ */
+app.get("/api/me/orders/usage", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+  const [buyerRow] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!buyerRow) return c.json({ error: "User no longer exists" }, 401);
+  if (buyerRow.role !== "buyer") {
+    return c.json({ error: "Only buyers have order usage metering" }, 403);
+  }
+
+  const subRow = await getOrCreateSubscription(userId);
+  if (!subRow) return c.json({ error: "User no longer exists" }, 401);
+
+  const billing = mapSubscriptionRow(subRow);
+  const used = await countBuyerOrdersSinceMonthStart(userId);
+  const { resetsAt } = calendarMonthBoundsForUsage();
+
+  if (billing.isPro) {
+    return c.json({
+      used,
+      limit: null,
+      isUnlimited: true,
+      resetsAt: resetsAt.toISOString(),
+    });
+  }
+
+  return c.json({
+    used,
+    limit: FREE_BUYER_MONTHLY_ORDER_LIMIT,
+    isUnlimited: false,
+    resetsAt: resetsAt.toISOString(),
+  });
+});
+
+// ─── Multi-location & team invitations (buyer Φάση 3.1) ────────────────────
+
+async function buyerLocationSeatCap(ownerUserId: number) {
+  const subRow = await getOrCreateSubscription(ownerUserId);
+  if (!subRow) return FREE_LOCATION_TEAM_CAP;
+  const billing = mapSubscriptionRow(subRow);
+  return billing.isPro ? PRO_LOCATION_TEAM_CAP : FREE_LOCATION_TEAM_CAP;
+}
+
+async function countBuyerOwnedLocations(ownerUserId: number) {
+  const [row] = await db.select({ c: count() }).from(locations).where(eq(locations.ownerUserId, ownerUserId));
+  return Number(row?.c ?? 0);
+}
+
+async function countMembersAtLocation(locationId: number) {
+  const [row] = await db
+    .select({ c: count() })
+    .from(locationMembers)
+    .where(eq(locationMembers.locationId, locationId));
+  return Number(row?.c ?? 0);
+}
+
+async function countPendingInvitesAtLocation(locationId: number) {
+  const [row] = await db
+    .select({ c: count() })
+    .from(locationInvites)
+    .where(and(eq(locationInvites.locationId, locationId), eq(locationInvites.status, "pending")));
+  return Number(row?.c ?? 0);
+}
+
+async function isLocationBillingOwner(actorUserId: number, locationId: number): Promise<boolean> {
+  const [loc] = await db.select().from(locations).where(eq(locations.id, locationId)).limit(1);
+  return Boolean(loc && loc.ownerUserId === actorUserId);
+}
+
+async function ensureBuyerLocationsBackfill(userId: number): Promise<void> {
+  const [row] = await db
+    .select({ c: count() })
+    .from(locationMembers)
+    .where(eq(locationMembers.userId, userId));
+  const n = Number(row?.c ?? 0);
+  if (n > 0) return;
+
+  await db.transaction(async (tx) => {
+    const [loc] = await tx
+      .insert(locations)
+      .values({ ownerUserId: userId, name: DEFAULT_BUYER_LOCATION_NAME, address: "" })
+      .returning();
+    if (!loc) return;
+    await tx.insert(locationMembers).values({
+      locationId: loc.id,
+      userId,
+      role: "owner",
+    });
+  });
+}
+
+const buyerLocationUpsertBody = z.object({
+  name: z.string().trim().min(1).max(120),
+  address: z.string().trim().max(500).optional(),
+});
+
+const buyerLocationPatchBody = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  address: z.string().trim().max(500).optional(),
+});
+
+const invitationEmailBody = z.object({
+  email: z.string().email(),
+});
+
+const invitationAcceptBody = z.object({
+  token: z.string().trim().min(8).max(200),
+});
+
+app.get("/api/me/locations", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "buyer") return c.json({ error: "Only buyers manage storefront locations" }, 403);
+
+  await ensureBuyerLocationsBackfill(userId);
+
+  const locRows = await db
+    .select({
+      loc: locations,
+      role: locationMembers.role,
+    })
+    .from(locationMembers)
+    .innerJoin(locations, eq(locationMembers.locationId, locations.id))
+    .where(eq(locationMembers.userId, userId))
+    .orderBy(asc(locations.id));
+
+  const out = await Promise.all(
+    locRows.map(async ({ loc, role }) => ({
+      id: String(loc.id),
+      ownerUserId: String(loc.ownerUserId),
+      name: loc.name,
+      address: loc.address,
+      role,
+      memberCount: await countMembersAtLocation(loc.id),
+      pendingInviteCount: await countPendingInvitesAtLocation(loc.id),
+      isOwner: loc.ownerUserId === userId,
+      createdAt: loc.createdAt.getTime(),
+    })),
+  );
+
+  return c.json({ locations: out });
+});
+
+app.post("/api/me/locations", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "buyer") return c.json({ error: "Forbidden" }, 403);
+
+  const parsed = buyerLocationUpsertBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid body" }, 400);
+  }
+
+  const subRow = await getOrCreateSubscription(userId);
+  if (!subRow) return c.json({ error: "Unauthorized" }, 401);
+  const billing = mapSubscriptionRow(subRow);
+
+  await ensureBuyerLocationsBackfill(userId);
+  const owned = await countBuyerOwnedLocations(userId);
+  const locationCap = billing.isPro ? PRO_BUYER_MAX_LOCATIONS_CAP : FREE_BUYER_MAX_LOCATIONS_CAP;
+  if (owned >= locationCap) {
+    return c.json({ error: "locations_limit_reached", limit: locationCap }, 402);
+  }
+
+  const { name, address } = parsed.data;
+  const addr = address?.trim() ?? "";
+  const [loc] = await db
+    .insert(locations)
+    .values({
+      ownerUserId: userId,
+      name,
+      address: addr,
+    })
+    .returning();
+  if (!loc) return c.json({ error: "Could not create location" }, 500);
+
+  await db.insert(locationMembers).values({
+    locationId: loc.id,
+    userId,
+    role: "owner",
+  });
+
+  return c.json(
+    {
+      location: {
+        id: String(loc.id),
+        ownerUserId: String(loc.ownerUserId),
+        name: loc.name,
+        address: loc.address,
+        role: "owner",
+        memberCount: await countMembersAtLocation(loc.id),
+        pendingInviteCount: 0,
+        isOwner: true,
+        createdAt: loc.createdAt.getTime(),
+      },
+    },
+    201,
+  );
+});
+
+app.patch("/api/me/locations/:id", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const lid = Number(c.req.param("id"));
+  if (!Number.isFinite(lid) || lid < 1) return c.json({ error: "Bad id" }, 400);
+
+  const ownerOk = await isLocationBillingOwner(userId, lid);
+  if (!ownerOk) return c.json({ error: "Forbidden" }, 403);
+
+  const parsed = buyerLocationPatchBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid body" }, 400);
+  }
+
+  const { name, address } = parsed.data;
+  if (name === undefined && address === undefined) {
+    return c.json({ error: "Nothing to update" }, 400);
+  }
+
+  const patch: { name?: string; address?: string } = {};
+  if (name !== undefined) patch.name = name;
+  if (address !== undefined) patch.address = address.trim();
+
+  const [updated] = await db
+    .update(locations)
+    .set(patch)
+    .where(eq(locations.id, lid))
+    .returning();
+  if (!updated) return c.json({ error: "Not found" }, 404);
+
+  return c.json({
+    location: {
+      id: String(updated.id),
+      ownerUserId: String(updated.ownerUserId),
+      name: updated.name,
+      address: updated.address,
+      role: "owner",
+      memberCount: await countMembersAtLocation(updated.id),
+      pendingInviteCount: await countPendingInvitesAtLocation(updated.id),
+      isOwner: true,
+      createdAt: updated.createdAt.getTime(),
+    },
+  });
+});
+
+app.delete("/api/me/locations/:id", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const lid = Number(c.req.param("id"));
+  if (!Number.isFinite(lid) || lid < 1) return c.json({ error: "Bad id" }, 400);
+
+  const ownerOk = await isLocationBillingOwner(userId, lid);
+  if (!ownerOk) return c.json({ error: "Forbidden" }, 403);
+
+  const owned = await countBuyerOwnedLocations(userId);
+  if (owned <= 1) {
+    return c.json({ error: "cannot_delete_only_location", code: "last_location" }, 400);
+  }
+
+  await db.delete(locations).where(eq(locations.id, lid));
+  return c.newResponse(null, 204);
+});
+
+app.get("/api/me/locations/:id/members", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const lid = Number(c.req.param("id"));
+  if (!Number.isFinite(lid) || lid < 1) return c.json({ error: "Bad id" }, 400);
+
+  const memberOk = await isBuyerMemberOfLocation(userId, lid);
+  if (!memberOk) return c.json({ error: "Forbidden" }, 403);
+
+  const rows = await db
+    .select({ lm: locationMembers, name: users.name, email: users.email })
+    .from(locationMembers)
+    .innerJoin(users, eq(locationMembers.userId, users.id))
+    .where(eq(locationMembers.locationId, lid));
+
+  return c.json({
+    members: rows.map(({ lm, name, email }) => ({
+      userId: String(lm.userId),
+      name,
+      email,
+      role: lm.role,
+    })),
+  });
+});
+
+app.delete("/api/me/locations/:id/members/:memberUserId", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const lid = Number(c.req.param("id"));
+  const victim = Number(c.req.param("memberUserId"));
+  if (!Number.isFinite(lid) || !Number.isFinite(victim))
+    return c.json({ error: "Bad id" }, 400);
+
+  const ownerOk = await isLocationBillingOwner(userId, lid);
+  if (!ownerOk) return c.json({ error: "Forbidden" }, 403);
+  if (victim === userId) return c.json({ error: "cannot_remove_owner_from_team" }, 400);
+
+  await db.delete(locationMembers).where(
+    and(
+      eq(locationMembers.locationId, lid),
+      eq(locationMembers.userId, victim),
+      eq(locationMembers.role, "staff"),
+    ),
+  );
+  return c.newResponse(null, 204);
+});
+
+app.post("/api/me/locations/:id/invitations", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const lid = Number(c.req.param("id"));
+  if (!Number.isFinite(lid) || lid < 1) return c.json({ error: "Bad id" }, 400);
+
+  const ownerOk = await isLocationBillingOwner(userId, lid);
+  if (!ownerOk) return c.json({ error: "Forbidden" }, 403);
+
+  const parsed = invitationEmailBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid body" }, 400);
+  }
+  const email = normalizeBuyerEmail(parsed.data.email);
+
+  const [locRow] = await db.select().from(locations).where(eq(locations.id, lid)).limit(1);
+  if (!locRow) return c.json({ error: "Location not found" }, 404);
+
+  const [ownerSelf] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (ownerSelf && normalizeBuyerEmail(ownerSelf.email) === email) {
+    return c.json({ error: "cannot_invite_self" }, 400);
+  }
+
+  const [targetUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (targetUser && targetUser.role !== "buyer") {
+    return c.json({ error: "invite_target_must_be_buyer" }, 400);
+  }
+
+  const [alreadyMember] = targetUser
+    ? await db
+        .select()
+        .from(locationMembers)
+        .where(and(eq(locationMembers.locationId, lid), eq(locationMembers.userId, targetUser.id)))
+        .limit(1)
+    : [null];
+
+  if (alreadyMember) {
+    return c.json({ error: "already_member" }, 409);
+  }
+
+  const seatCap = await buyerLocationSeatCap(locRow.ownerUserId);
+  const taken =
+    (await countMembersAtLocation(lid)) + (await countPendingInvitesAtLocation(lid));
+
+  const [duplicatePending] = await db
+    .select()
+    .from(locationInvites)
+    .where(and(eq(locationInvites.locationId, lid), eq(locationInvites.email, email), eq(locationInvites.status, "pending")))
+    .limit(1);
+  if (duplicatePending) {
+    return c.json({ error: "invite_already_pending", token: duplicatePending.token }, 409);
+  }
+
+  if (taken >= seatCap) {
+    return c.json({ error: "seats_limit_reached", limit: seatCap }, 402);
+  }
+
+  const token = `invite-${randomUUID().replace(/-/g, "").slice(0, 20)}`;
+
+  await db.insert(locationInvites).values({
+    locationId: lid,
+    email,
+    invitedByUserId: userId,
+    token,
+    status: "pending",
+  });
+
+  return c.json(
+    {
+      invitation: {
+        token,
+        email,
+        /** Dev/demo: μέχρι να υπάρξει transactional email. */
+        devNote:
+          "Χρησιμοποίησε αυτό το token στο POST /api/me/invitations/accept από τον προσκεκλημένο buyer λογαριασμό.",
+      },
+    },
+    201,
+  );
+});
+
+app.get("/api/me/invitations/incoming", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "buyer") return c.json({ error: "Forbidden" }, 403);
+
+  const normalized = normalizeBuyerEmail(u.email);
+  const rows = await db
+    .select({ inv: locationInvites, loc: locations })
+    .from(locationInvites)
+    .innerJoin(locations, eq(locationInvites.locationId, locations.id))
+    .where(and(eq(locationInvites.email, normalized), eq(locationInvites.status, "pending")));
+
+  return c.json({
+    invitations: rows.map(({ inv, loc }) => ({
+      token: inv.token,
+      email: inv.email,
+      locationId: String(loc.id),
+      locationName: loc.name,
+      createdAt: inv.createdAt.getTime(),
+    })),
+  });
+});
+
+app.post("/api/me/invitations/accept", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const parsed = invitationAcceptBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
+
+  const [inviteRow] = await db
+    .select()
+    .from(locationInvites)
+    .where(eq(locationInvites.token, parsed.data.token))
+    .limit(1);
+  if (!inviteRow || inviteRow.status !== "pending") {
+    return c.json({ error: "invite_not_pending" }, 400);
+  }
+
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "buyer") return c.json({ error: "Forbidden" }, 403);
+
+  const selfEmail = normalizeBuyerEmail(u.email);
+  if (selfEmail !== normalizeBuyerEmail(inviteRow.email)) {
+    return c.json({ error: "invite_wrong_account" }, 403);
+  }
+
+  const memberOkBefore = await isBuyerMemberOfLocation(userId, inviteRow.locationId);
+  if (memberOkBefore) {
+    await db
+      .update(locationInvites)
+      .set({ status: "canceled" })
+      .where(eq(locationInvites.id, inviteRow.id));
+    return c.json({ ok: true, alreadyMember: true });
+  }
+
+  const [locRow] = await db
+    .select()
+    .from(locations)
+    .where(eq(locations.id, inviteRow.locationId))
+    .limit(1);
+  if (!locRow) return c.json({ error: "Location missing" }, 404);
+
+  const seatCap = await buyerLocationSeatCap(locRow.ownerUserId);
+  const occupied = await countMembersAtLocation(inviteRow.locationId);
+  if (occupied >= seatCap) {
+    return c.json({ error: "seats_limit_reached", limit: seatCap }, 402);
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.insert(locationMembers).values({
+      locationId: inviteRow.locationId,
+      userId,
+      role: "staff",
+    });
+    await tx
+      .update(locationInvites)
+      .set({ status: "accepted" })
+      .where(eq(locationInvites.id, inviteRow.id));
+  });
+
+  return c.json({ ok: true });
+});
+
+app.post("/api/me/invitations/decline", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+  const parsed = invitationAcceptBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
+
+  const [inviteRow] = await db
+    .select()
+    .from(locationInvites)
+    .where(eq(locationInvites.token, parsed.data.token))
+    .limit(1);
+
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (
+    !inviteRow ||
+    !u ||
+    u.role !== "buyer" ||
+    normalizeBuyerEmail(u.email) !== normalizeBuyerEmail(inviteRow.email) ||
+    inviteRow.status !== "pending"
+  ) {
+    return c.json({ error: "Forbidden or invalid invitation" }, 403);
+  }
+
+  await db
+    .update(locationInvites)
+    .set({ status: "declined" })
+    .where(eq(locationInvites.id, inviteRow.id));
+
+  return c.json({ ok: true });
+});
+
+// ─── Price alerts (buyer Pro — Φάση 3.2, MVP χωρίς push) ────────────────────
+
+const createPriceAlertBody = z.object({
+  productId: z.number().int().positive(),
+  thresholdEur: z.number().min(0.01).max(999_999),
+});
+
+const patchPriceAlertBody = z.object({
+  thresholdEur: z.number().min(0.01).max(999_999).optional(),
+  active: z.boolean().optional(),
+});
+
+function thresholdEurToDbString(value: number): string {
+  return value.toFixed(2);
+}
+
+type PriceAlertJoinRow = {
+  a: typeof priceAlerts.$inferSelect;
+  p: typeof products.$inferSelect;
+  s: typeof suppliers.$inferSelect;
+};
+
+function serializePriceAlertRow({ a, p, s }: PriceAlertJoinRow) {
+  return {
+    id: String(a.id),
+    productId: String(a.productId),
+    productName: p.name,
+    supplierName: s.name,
+    currentPriceEur: Number(p.priceEur),
+    threshold: a.threshold,
+    active: a.active,
+    armed: a.armed,
+    triggeredAt:
+      a.triggeredAt instanceof Date
+        ? a.triggeredAt.getTime()
+        : a.triggeredAt != null
+          ? Number(a.triggeredAt)
+          : null,
+    createdAt: a.createdAt.getTime(),
+  };
+}
+
+async function loadPriceAlertJoin(userId: number, alertId: number): Promise<PriceAlertJoinRow | null> {
+  const [row] = await db
+    .select({ a: priceAlerts, p: products, s: suppliers })
+    .from(priceAlerts)
+    .innerJoin(products, eq(priceAlerts.productId, products.id))
+    .innerJoin(suppliers, eq(products.supplierId, suppliers.id))
+    .where(and(eq(priceAlerts.userId, userId), eq(priceAlerts.id, alertId)))
+    .limit(1);
+  return row ?? null;
+}
+
+app.get("/api/me/price-alerts", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "buyer") return c.json({ error: "Forbidden" }, 403);
+
+  const subRow = await getOrCreateSubscription(userId);
+  if (!subRow) return c.json({ error: "User no longer exists" }, 401);
+
+  const billing = mapSubscriptionRow(subRow);
+  // Free tier: κενή λίστα (το UI ήδη κλείνει τη δημιουργία με GatedAction).
+  if (!billing.isPro) return c.json({ alerts: [] });
+
+  const rows = await db
+    .select({ a: priceAlerts, p: products, s: suppliers })
+    .from(priceAlerts)
+    .innerJoin(products, eq(priceAlerts.productId, products.id))
+    .innerJoin(suppliers, eq(products.supplierId, suppliers.id))
+    .where(eq(priceAlerts.userId, userId))
+    .orderBy(desc(priceAlerts.createdAt));
+
+  return c.json({ alerts: rows.map(serializePriceAlertRow) });
+});
+
+app.post("/api/me/price-alerts", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "buyer") return c.json({ error: "Forbidden" }, 403);
+
+  const subRow = await getOrCreateSubscription(userId);
+  if (!subRow) return c.json({ error: "User no longer exists" }, 401);
+
+  const billing = mapSubscriptionRow(subRow);
+  if (!billing.isPro) {
+    return c.json({ error: "price_alerts_requires_pro", code: "requires_pro" }, 402);
+  }
+
+  const parsed = createPriceAlertBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid body" }, 400);
+  }
+
+  const productIdNum = parsed.data.productId;
+
+  const [duplicate] = await db
+    .select({ id: priceAlerts.id })
+    .from(priceAlerts)
+    .where(and(eq(priceAlerts.userId, userId), eq(priceAlerts.productId, productIdNum)))
+    .limit(1);
+  if (duplicate) {
+    return c.json({ error: "duplicate_price_alert" }, 409);
+  }
+
+  const [joinedProduct] = await db
+    .select({ p: products, s: suppliers })
+    .from(products)
+    .innerJoin(suppliers, eq(products.supplierId, suppliers.id))
+    .where(eq(products.id, productIdNum))
+    .limit(1);
+
+  if (!joinedProduct) {
+    return c.json({ error: "Product not found" }, 404);
+  }
+
+  const thr = thresholdEurToDbString(parsed.data.thresholdEur);
+
+  const [inserted] = await db
+    .insert(priceAlerts)
+    .values({
+      userId,
+      productId: productIdNum,
+      threshold: thr,
+      active: true,
+      armed: true,
+    })
+    .returning();
+
+  if (!inserted) return c.json({ error: "Could not create price alert" }, 500);
+
+  const joined =
+    (await loadPriceAlertJoin(userId, inserted.id)) ??
+    ({
+      a: inserted,
+      p: joinedProduct.p,
+      s: joinedProduct.s,
+    } satisfies PriceAlertJoinRow);
+
+  return c.json({ alert: serializePriceAlertRow(joined) }, 201);
+});
+
+app.patch("/api/me/price-alerts/:id", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const alertId = Number(c.req.param("id"));
+  if (!Number.isFinite(alertId) || alertId < 1) return c.json({ error: "Bad id" }, 400);
+
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "buyer") return c.json({ error: "Forbidden" }, 403);
+
+  const subRow = await getOrCreateSubscription(userId);
+  if (!subRow) return c.json({ error: "User no longer exists" }, 401);
+  const billing = mapSubscriptionRow(subRow);
+  if (!billing.isPro) {
+    return c.json({ error: "price_alerts_requires_pro", code: "requires_pro" }, 402);
+  }
+
+  const parsed = patchPriceAlertBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid body" }, 400);
+  }
+
+  if (parsed.data.thresholdEur === undefined && parsed.data.active === undefined) {
+    return c.json({ error: "Nothing to update" }, 400);
+  }
+
+  const [existing] = await db
+    .select()
+    .from(priceAlerts)
+    .where(and(eq(priceAlerts.userId, userId), eq(priceAlerts.id, alertId)))
+    .limit(1);
+
+  if (!existing) return c.json({ error: "Not found" }, 404);
+
+  const setPatch: Partial<typeof priceAlerts.$inferInsert> = {};
+  if (parsed.data.thresholdEur !== undefined) {
+    setPatch.threshold = thresholdEurToDbString(parsed.data.thresholdEur);
+    setPatch.armed = true;
+  }
+  if (parsed.data.active !== undefined) {
+    setPatch.active = parsed.data.active;
+    if (parsed.data.active) setPatch.armed = true;
+  }
+
+  await db.update(priceAlerts).set(setPatch).where(eq(priceAlerts.id, alertId));
+
+  const joinedAfter = await loadPriceAlertJoin(userId, alertId);
+  if (!joinedAfter) return c.json({ error: "Not found" }, 404);
+
+  return c.json({ alert: serializePriceAlertRow(joinedAfter) });
+});
+
+app.delete("/api/me/price-alerts/:id", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+  const alertId = Number(c.req.param("id"));
+  if (!Number.isFinite(alertId) || alertId < 1) return c.json({ error: "Bad id" }, 400);
+
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "buyer") return c.json({ error: "Forbidden" }, 403);
+
+  await db.delete(priceAlerts).where(and(eq(priceAlerts.userId, userId), eq(priceAlerts.id, alertId)));
+
+  return c.newResponse(null, 204);
+});
+
+const expoPushTokenBody = z.object({
+  token: z.string().min(20).max(600),
+  platform: z.enum(["ios", "android"]),
+});
+
+const notificationPrefsBody = z.object({
+  priceAlertEmailDigest: z.boolean(),
+});
+
+app.post("/api/me/notifications/push-token", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "buyer") return c.json({ error: "Forbidden" }, 403);
+
+  const parsed = expoPushTokenBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid body" }, 400);
+  }
+
+  await db
+    .insert(userPushTokens)
+    .values({
+      userId,
+      token: parsed.data.token,
+      platform: parsed.data.platform,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: userPushTokens.token,
+      set: {
+        userId,
+        platform: parsed.data.platform,
+        updatedAt: new Date(),
+      },
+    });
+
+  return c.json({ ok: true });
+});
+
+/** Καθαρίζει όλα τα Expo tokens του χρήστη (καλείται στο sign-out ώστε να μη μείνουν stale targets). */
+app.delete("/api/me/notifications/push-tokens", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+  await db.delete(userPushTokens).where(eq(userPushTokens.userId, userId));
+
+  return c.newResponse(null, 204);
+});
+
+app.get("/api/me/notification-preferences", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+  const [u] = await db
+    .select({ priceAlertEmailDigest: users.priceAlertEmailDigest })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!u) return c.json({ error: "User no longer exists" }, 401);
+
+  return c.json({ priceAlertEmailDigest: u.priceAlertEmailDigest });
+});
+
+app.patch("/api/me/notification-preferences", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "buyer") return c.json({ error: "Forbidden" }, 403);
+
+  const parsed = notificationPrefsBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid body" }, 400);
+  }
+
+  await db
+    .update(users)
+    .set({ priceAlertEmailDigest: parsed.data.priceAlertEmailDigest })
+    .where(eq(users.id, userId));
+
+  return c.json({ priceAlertEmailDigest: parsed.data.priceAlertEmailDigest });
+});
+
+app.get("/api/me/spending", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.role !== "buyer") return c.json({ error: "Forbidden" }, 403);
+
+  const monthsQ = c.req.query("months");
+  const parsed = z.enum(["3", "6", "12"]).safeParse(monthsQ ?? "6");
+  const rangeMonths = (parsed.success ? Number(parsed.data) : 6) as SpendingMonthsOption;
+
+  const subRow = await getOrCreateSubscription(userId);
+  if (!subRow) return c.json({ error: "User no longer exists" }, 401);
+  const billing = mapSubscriptionRow(subRow);
+
+  const spending = await aggregateBuyerSpending({
+    buyerId: userId,
+    isPro: billing.isPro,
+    rangeMonths,
+  });
+  return c.json({ spending });
 });
 
 // ─── Cart endpoints (buyer-only, server-side cart sync) ───────────────────
@@ -1401,6 +2368,96 @@ app.delete("/api/me/cart/supplier/:supplierId", async (c) => {
 
   const items = await loadCartForUser(userId);
   return c.json({ items });
+});
+
+// ─── Favorites (buyer-only, Φάση 2.2) ────────────────────────────────────
+
+async function loadFavoriteSuppliersForUser(userId: number) {
+  const rows = await db
+    .select({ supplierRow: suppliers })
+    .from(favorites)
+    .innerJoin(suppliers, eq(favorites.supplierId, suppliers.id))
+    .where(eq(favorites.userId, userId))
+    .orderBy(desc(favorites.createdAt));
+  return rows.map((r) => mapSupplierRow(r.supplierRow));
+}
+
+app.get("/api/me/favorites", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const forbidden = await requireBuyerOrError(c, userId);
+  if (forbidden) return forbidden;
+  const list = await loadFavoriteSuppliersForUser(userId);
+  return c.json({ suppliers: list });
+});
+
+const addFavoriteBody = z.object({
+  supplierId: z.number().int().positive(),
+});
+
+app.post("/api/me/favorites", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const forbidden = await requireBuyerOrError(c, userId);
+  if (forbidden) return forbidden;
+
+  const parsed = addFavoriteBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid body" }, 400);
+  }
+  const { supplierId } = parsed.data;
+
+  const [supplierRow] = await db.select().from(suppliers).where(eq(suppliers.id, supplierId)).limit(1);
+  if (!supplierRow) return c.json({ error: "Supplier not found" }, 404);
+
+  const [existingFav] = await db
+    .select()
+    .from(favorites)
+    .where(and(eq(favorites.userId, userId), eq(favorites.supplierId, supplierId)))
+    .limit(1);
+  if (!existingFav) {
+    const subRow = await getOrCreateSubscription(userId);
+    if (!subRow) return c.json({ error: "User no longer exists" }, 401);
+
+    const billing = mapSubscriptionRow(subRow);
+    if (!billing.isPro) {
+      const [aggregate] = await db
+        .select({ n: count() })
+        .from(favorites)
+        .where(eq(favorites.userId, userId));
+      const favCount = Number(aggregate?.n ?? 0);
+      if (favCount >= FREE_BUYER_MAX_SAVED_SUPPLIERS) {
+        return c.json(
+          { error: "favorites_limit_reached", limit: FREE_BUYER_MAX_SAVED_SUPPLIERS },
+          402,
+        );
+      }
+    }
+
+    await db.insert(favorites).values({ userId, supplierId });
+  }
+
+  const list = await loadFavoriteSuppliersForUser(userId);
+  return c.json({ suppliers: list });
+});
+
+app.delete("/api/me/favorites/:supplierId", async (c) => {
+  const userId = await getAuthUserId(c);
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const forbidden = await requireBuyerOrError(c, userId);
+  if (forbidden) return forbidden;
+
+  const supplierId = Number(c.req.param("supplierId"));
+  if (!Number.isFinite(supplierId) || supplierId < 1) {
+    return c.json({ error: "Invalid supplierId" }, 400);
+  }
+
+  await db
+    .delete(favorites)
+    .where(and(eq(favorites.userId, userId), eq(favorites.supplierId, supplierId)));
+
+  const list = await loadFavoriteSuppliersForUser(userId);
+  return c.json({ suppliers: list });
 });
 
 // ─── Dev-only endpoints για το mock-billing flow ───────────────────────────

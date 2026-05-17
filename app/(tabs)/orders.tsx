@@ -7,9 +7,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FilterTabs, type FilterTab } from "@/components/ui/filter-tabs";
 import { GatedAction } from "@/components/ui/gated-action";
 import { StatusPill } from "@/components/ui/status-pill";
+import { useBuyerActiveLocationPicker } from "@/hooks/use-buyer-active-location";
 import { useColors } from "@/hooks/use-colors";
-import { useRecentOrdersQuery } from "@/lib/horeca-queries";
+import { partitionOrdersByHistoryWindow } from "@/lib/order-history-window";
+import { useRecentOrdersQuery, useMonthlyOrderUsageQuery } from "@/lib/horeca-queries";
 import type { Order, OrderStatus } from "@/lib/mocks/horeca";
+import { useFeatures } from "@/lib/subscription";
 
 type OrderFilter = "active" | "history" | "all";
 
@@ -39,23 +42,48 @@ function matchesFilter(order: Order, filter: OrderFilter): boolean {
 export default function OrdersScreen() {
   const router = useRouter();
   const colors = useColors();
-  const { data: recentOrders = [], isLoading } = useRecentOrdersQuery({ limit: 20 });
+  const features = useFeatures();
+
+  const { activeLocationId, showPicker, locations, setActiveLocationId } = useBuyerActiveLocationPicker();
+  /** Free: ανεβάζουμε μέχρι το max του API για ακριβέστερο +N σε παλαιότερες. */
+  const listFetchLimit =
+    features.historyWindowDays === Number.POSITIVE_INFINITY ? 20 : 100;
+  const { data: recentOrders = [], isLoading } = useRecentOrdersQuery({
+    limit: listFetchLimit,
+    locationId: activeLocationId,
+  });
+  const usageQuery = useMonthlyOrderUsageQuery();
+  const usage = usageQuery.data;
   const [filter, setFilter] = useState<OrderFilter>("active");
+
+  const { visibleOrders, hiddenOlderCount } = useMemo(
+    () => partitionOrdersByHistoryWindow(recentOrders, features.historyWindowDays),
+    [recentOrders, features.historyWindowDays],
+  );
 
   const filterTabs = useMemo<ReadonlyArray<FilterTab<OrderFilter>>>(
     () =>
       FILTER_DEFS.map((f) => ({
         key: f.key,
         label: f.label,
-        count: recentOrders.filter((o) => matchesFilter(o, f.key)).length,
+        count: visibleOrders.filter((o) => matchesFilter(o, f.key)).length,
       })),
-    [recentOrders],
+    [visibleOrders],
   );
 
   const filtered = useMemo(
-    () => recentOrders.filter((o) => matchesFilter(o, filter)),
-    [recentOrders, filter],
+    () => visibleOrders.filter((o) => matchesFilter(o, filter)),
+    [visibleOrders, filter],
   );
+
+  const showHistoryPaywall =
+    hiddenOlderCount > 0 && features.historyWindowDays < Number.POSITIVE_INFINITY;
+
+  const onlyOlderThanHistoryWindow =
+    !isLoading &&
+    recentOrders.length > 0 &&
+    visibleOrders.length === 0 &&
+    showHistoryPaywall;
 
   return (
     <ScreenContainer className="px-5" containerClassName="bg-background">
@@ -67,6 +95,98 @@ export default function OrdersScreen() {
               Δες τι εκκρεμεί, τι είναι καθ&apos; οδόν και ποια παραγγελία αξίζει να επαναλάβεις άμεσα.
             </Text>
           </View>
+
+          {showPicker ? (
+            <View className="gap-2">
+              <View className="flex-row items-center justify-between">
+                <Text className="text-xs font-semibold uppercase text-muted">Ενεργό κατάστημα</Text>
+                <TouchableOpacity accessibilityRole="button" onPress={() => router.push("/locations")}>
+                  <Text className="text-xs font-semibold text-primary">Διαχείριση</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View className="flex-row gap-2">
+                  {locations.map((loc) => {
+                    const active = loc.id === activeLocationId;
+                    return (
+                      <TouchableOpacity
+                        key={loc.id}
+                        onPress={() => setActiveLocationId(loc.id)}
+                        className={`rounded-full border px-3 py-2 ${
+                          active ? "border-primary bg-primary/10" : "border-border bg-surface"
+                        }`}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          className={`max-w-[200px] text-xs font-semibold ${active ? "text-primary" : "text-foreground"}`}
+                        >
+                          {loc.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {/* Φάση 2.1: μηνιαίο όριο free buyer — ορατό Pro value + paywall CTA. */}
+          {usageQuery.isLoading ? (
+            <Text className="text-xs text-muted">Φόρτωση μηνιαίου ορίου…</Text>
+          ) : usage ? (
+            <View className="gap-3">
+              {usage.isUnlimited ? (
+                <View className="self-start rounded-full bg-primary/10 px-3 py-1.5">
+                  <Text className="text-xs font-semibold text-primary">Απεριόριστες παραγγελίες (Pro)</Text>
+                </View>
+              ) : usage.limit != null ? (
+                <>
+                  <View
+                    className={`self-start rounded-full px-3 py-2 ${
+                      usage.used >= usage.limit
+                        ? "bg-error/15"
+                        : usage.used >= 8
+                          ? "bg-warning/15"
+                          : "bg-surface"
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs font-semibold ${
+                        usage.used >= usage.limit
+                          ? "text-error"
+                          : usage.used >= 8
+                            ? "text-warning"
+                            : "text-foreground"
+                      }`}
+                    >
+                      {usage.used} / {usage.limit} παραγγελίες αυτόν τον μήνα
+                    </Text>
+                  </View>
+                  {usage.used >= 8 && usage.used < usage.limit ? (
+                    <Text className="text-xs font-medium text-warning">Κοντά στο όριο</Text>
+                  ) : null}
+                  {usage.used >= usage.limit ? (
+                    <View className="rounded-[24px] border border-warning/40 bg-warning/10 p-4">
+                      <Text className="text-sm font-semibold text-foreground">
+                        Έφτασες το μηνιαίο όριο
+                      </Text>
+                      <Text className="mt-1 text-xs leading-5 text-muted">
+                        Με το δωρεάν πλάνο έχεις μέχρι {usage.limit} νέες παραγγελίες ανά μήνα. Οι νέες θα
+                        ξεκλειδωθούν με την πρώτη μέρα του επόμενου μήνα· με Pro είναι απεριόριστες.
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => router.push("/subscription")}
+                        accessibilityRole="button"
+                        className="mt-3 self-start rounded-full bg-primary px-4 py-2"
+                      >
+                        <Text className="text-sm font-semibold text-background">Δες τα πλάνα</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                </>
+              ) : null}
+            </View>
+          ) : null}
 
           <FilterTabs filters={filterTabs} active={filter} onChange={setFilter} />
 
@@ -87,12 +207,20 @@ export default function OrdersScreen() {
 
           <View className="gap-3 pb-2">
             {filtered.length === 0 ? (
-              <OrdersEmptyState
-                filter={filter}
-                isLoading={isLoading}
-                onPrimary={() => router.push("/suppliers")}
-                primaryIconColor={colors.primary}
-              />
+              onlyOlderThanHistoryWindow ? (
+                <EmptyState
+                  icon={{ name: "clock.fill", color: colors.primary }}
+                  title={`Ορατές οι τελευταίες ${features.historyWindowDays} ημέρες (δωρεάν)`}
+                  body={`Δεν υπάρχουν εμφανίσιμες παραγγελίες σε αυτό το παράθυρο. Στον λογαριασμό σου υπάρχουν όμως παλαιότερες — ξεκλείδωσέ τες με το Pro (ενότητα παρακάτω).`}
+                />
+              ) : (
+                <OrdersEmptyState
+                  filter={filter}
+                  isLoading={isLoading}
+                  onPrimary={() => router.push("/suppliers")}
+                  primaryIconColor={colors.primary}
+                />
+              )
             ) : (
               filtered.map((order) => (
                 <View key={order.id} className="rounded-[24px] border border-border bg-surface p-4">
@@ -128,6 +256,29 @@ export default function OrdersScreen() {
                 </View>
               ))
             )}
+            {showHistoryPaywall ? (
+              <View className="rounded-[24px] border border-primary/25 bg-primary/5 p-4 gap-3">
+                <Text className="text-sm font-semibold text-foreground">
+                  +{hiddenOlderCount}{" "}
+                  {hiddenOlderCount === 1
+                    ? "παλαιότερη παραγγελία"
+                    : "παλαιότερες παραγγελίες"}{" "}
+                  (εκτός των τελευταίων {features.historyWindowDays} ημερών)
+                </Text>
+                <Text className="text-xs leading-5 text-muted">
+                  Με το Pro βλέπεις όλο το ιστορικό στην εφαρμογή χωρίς όριο 30 ημερών και
+                  ξεκλειδώνεις την εξαγωγή για το λογιστικό.
+                </Text>
+                <GatedAction
+                  feature="unlimitedOrderHistory"
+                  label="Δες τα πλάνα"
+                  variant="primary"
+                  paywallTitle="Πλήρες ιστορικό με Pro"
+                  paywallMessage="Το Δωρεάν πλάνο δείχνει τις τελευταίες 30 ημέρες. Με το Pro βλέπεις όλες τις παραγγελίες και την εξαγωγή ιστορικού."
+                  onUnlockedPress={() => router.push("/subscription")}
+                />
+              </View>
+            ) : null}
           </View>
         </View>
       </ScrollView>

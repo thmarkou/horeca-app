@@ -17,7 +17,8 @@ function resolveApiPort(): string {
   if (fromEnv) return fromEnv;
   const fromConfig = horecaExtra().horecaApiPort;
   if (fromConfig) return fromConfig;
-  return "3000";
+  // Default matches platform/index.ts and ios/.xcode.env so bare `pnpm dev` + physical device are less likely to hit :3000 while the server listens on :3010.
+  return "3010";
 }
 
 function isLoopbackHost(hostname: string): boolean {
@@ -25,12 +26,26 @@ function isLoopbackHost(hostname: string): boolean {
   return h === "localhost" || h === "127.0.0.1" || h === "::1";
 }
 
+/**
+ * Tunnel hostnames reach Metro over the internet; they do not forward your Mac's Hono API port.
+ * Using them for `http://<host>:<platformPort>` causes long timeouts — reject and fall back to EXPO_PUBLIC_DEV_LAN_HOST / explicit URL.
+ */
+function isUnsuitableApiDevHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (isLoopbackHost(h)) return true;
+  return (
+    h.endsWith(".exp.direct") ||
+    h.includes("ngrok") ||
+    h.includes("loca.lt")
+  );
+}
+
 /** Host where Metro runs (your Mac on LAN). On a physical phone, 127.0.0.1 is the phone itself, not the Mac. */
 function getExpoPackagerHost(): string | null {
   const hostUri = Constants.expoConfig?.hostUri;
   if (typeof hostUri === "string" && hostUri.length > 0) {
     const host = hostUri.split(":")[0]?.trim();
-    if (host && !isLoopbackHost(host)) return host;
+    if (host && !isUnsuitableApiDevHost(host)) return host;
   }
   const scriptURL = (NativeModules as { SourceCode?: { scriptURL?: string } }).SourceCode?.scriptURL;
   if (typeof scriptURL === "string") {
@@ -38,7 +53,7 @@ function getExpoPackagerHost(): string | null {
       const m = scriptURL.match(/\/\/([^/]+)\//);
       const hostWithPort = m?.[1];
       const hostname = hostWithPort?.split(":")[0];
-      if (hostname && !isLoopbackHost(hostname)) return hostname;
+      if (hostname && !isUnsuitableApiDevHost(hostname)) return hostname;
     } catch {
       /* ignore */
     }
@@ -97,12 +112,10 @@ export function getApiBaseUrl(): string {
     "";
   if (explicit && Platform.OS === "ios") {
     explicit = rewriteIosLoopbackBaseUrl(explicit);
-    if (
-      typeof __DEV__ !== "undefined" &&
-      __DEV__ &&
-      Device.isDevice &&
-      iosExplicitStillLoopback(explicit)
-    ) {
+    // Οποιοδήποτε build (Debug/Release): σε πραγματικό iPhone το 127.0.0.1 είναι η συσκευή, όχι το Mac.
+    // Αν το rewrite απέτυχε (χωρίς Metro host / EXPO_PUBLIC_DEV_LAN_HOST), αγνοούμε το explicit ώστε
+    // να μην κάνουμε fetch στο loopback του τηλεφώνου (ατελείωτο timeout).
+    if (Device.isDevice && iosExplicitStillLoopback(explicit)) {
       explicit = "";
     }
   }

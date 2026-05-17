@@ -4,8 +4,9 @@ import { useRef, useState } from "react";
 import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { getApiBaseUrl } from "@/constants/api";
 import * as Api from "@/lib/_core/api";
-import { getHorecaApiTimeoutMessageGr } from "@/lib/api/http";
+import { ApiError, getHorecaApiTimeoutMessageGr } from "@/lib/api/http";
 import { navigateAfterHorecaAuth } from "@/lib/horeca-stored-role";
 
 function mapLoginError(message: string): string {
@@ -28,7 +29,8 @@ function mapLoginError(message: string): string {
   if (
     lower.includes("network request timed out") ||
     lower.includes("request timed out") ||
-    (lower.includes("timed out") && lower.includes("network"))
+    (lower.includes("timed out") && lower.includes("network")) ||
+    (message.includes("\u03ad\u03bb\u03b7\u03be\u03b5") && message.includes("\u03b1\u03c0\u03ac\u03bd\u03c4\u03b7\u03c3\u03b7"))
   ) {
     return getHorecaApiTimeoutMessageGr();
   }
@@ -43,6 +45,10 @@ function mapLoginError(message: string): string {
 
 export default function SignInScreen() {
   const router = useRouter();
+  const apiBase = getApiBaseUrl();
+  /** Release build από Xcode ακόμα χτυπάει τοπικό HTTP — δείχνουμε endpoint ώστε να φαίνεται λάθος IP/πόρτα. */
+  const showApiEndpointRow =
+    (typeof __DEV__ !== "undefined" && __DEV__) || apiBase.length === 0 || apiBase.startsWith("http://");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   /** Προεπιλογή ορατό κείμενο· το κουμπί δεξιά εναλλάσσει σε τελείες. */
@@ -73,7 +79,12 @@ export default function SignInScreen() {
       await navigateAfterHorecaAuth(router);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setErrorMessage(mapLoginError(msg));
+      let text = mapLoginError(msg);
+      if (err instanceof ApiError && err.status === 0) {
+        const b = getApiBaseUrl();
+        text += `\n\n${b.length > 0 ? `\u03a4\u03c1\u03ad\u03c7\u03bf\u03bd API: ${b}` : "\u0394\u03b5\u03bd \u03c5\u03c0\u03ac\u03c1\u03c7\u03b5\u03b9 \u03c1\u03cd\u03b8\u03bc\u03b9\u03c3\u03b7 API (\u03c4\u03bf\u03c0\u03b9\u03ba\u03ac: IP Mac + \u03c0\u03cc\u03c1\u03c4\u03b1 \u03c0\u03bb\u03b1\u03c4\u03c6\u03cc\u03c1\u03bc\u03b1\u03c2)."}`;
+      }
+      setErrorMessage(text);
     } finally {
       setIsSubmitting(false);
     }
@@ -155,6 +166,13 @@ export default function SignInScreen() {
               </View>
             </View>
             {errorMessage ? <Text className="text-sm leading-5 text-error">{errorMessage}</Text> : null}
+            {showApiEndpointRow ? (
+              <Text className="text-xs leading-4 text-muted" selectable>
+                {apiBase.length > 0
+                  ? `API: ${apiBase}`
+                  : "API: — (\u03cc\u03c1\u03b9\u03c3\u03b5 EXPO_PUBLIC_API_BASE_URL \u03ae ios/.xcode.env.local \u03bc\u03b5 IP Mac \u03ba\u03b1\u03b9 \u03c0\u03cc\u03c1\u03c4\u03b1 \u03c0\u03bb\u03b1\u03c4\u03c6\u03cc\u03c1\u03bc\u03b1\u03c2)"}
+              </Text>
+            ) : null}
             <TouchableOpacity
               onPress={handleSignIn}
               disabled={isSubmitting}

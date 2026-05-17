@@ -73,9 +73,9 @@
 **Στόχος:** Να εμφανίζεται **συγκεντρωμένη αγορά** και **επαγγελματική αίσθηση**.
 
 - [x] **B1.** Αρχική (`(tabs)/index`): time-aware χαιρετισμός + όνομα χρήστη, avatar initial, hero με σωστά CTAs (Νέα παραγγελία / Επανάληψη), γρήγορες ενέργειες (4), KPI strip από `recentOrders`, empty state χωρίς παραγγελίες, συνέπεια spacing/ιεραρχίας.
-- [ ] **B2.** Λίστα προμηθευτών / προφίλ προμηθευτή: συνέπεια με cards, verified badge, σαφή CTAs.
+- [x] **B2.** Λίστα προμηθευτών / προφίλ προμηθευτή: `SupplierCard`, `StarRating`, verified/«Νέος», καρδιά αγαπημένων, επεκταμένο `supplier-profile` (hero, stats, προϊόντα, χάρτης όπου εφαρμόζεται).
 - [x] **B2/B3.** Παραγγελίες buyer: φίλτρα Ενεργές/Ιστορικό/Όλες με counts, empty states ανά φίλτρο, κάρτες με Λεπτομέρειες/Επανάληψη (χωρίς nested touchable), δυναμικό `order-detail` που διαβάζει `id` από `useLocalSearchParams` και χρησιμοποιεί το ίδιο query cache με τη λίστα.
-- [x] **B4.** Λογαριασμός buyer: avatar, όνομα/email/ρόλος από SecureStore, κάρτα συνδρομής ("Δωρεάν demo" — honest placeholder), έξοδος μέσω `Api.signOut()`. Καμία hardcoded demo επιχείρηση, καμία sign-in/sign-up CTA σε authenticated οθόνη, χωρίς supplier snapshot.
+- [x] **B4.** Λογαριασμός buyer: avatar, όνομα/email/ρόλος από SecureStore, **`SubscriptionCard`** με πραγματικό plan από API + link στην οθόνη συνδρομής, έξοδος μέσω `Api.signOut()`. Καμία hardcoded demo επιχείρηση, καμία sign-in/sign-up CTA σε authenticated οθόνη, χωρίς supplier snapshot.
 
 **Παράδοση:** Ροή buyer “demo‑ready” για demo σε πελάτη (χωρίς απαραίτητα νέα backend features).
 
@@ -132,10 +132,10 @@
 
 ## 7. Ορισμός επιτυχίας (MVP dual‑role)
 
-- [ ] Δύο λογαριασμοί demo (buyer + supplier) με **διακριτή εμπειρία** χωρίς σύγχυση.
-- [ ] Κενές καταστάσεις και λάθη χειρισμένα αξιοπρεπώς.
-- [ ] Χωρίς αχρείαστα αγγλικά στο κύριο UI.
-- [ ] Ένα εγχειρίδιο 1 σελίδας για testers: “Πώς συνδέομαι ως buyer / supplier”.
+- [x] Δύο λογαριασμοί demo (buyer + supplier) με **διακριτή εμπειρία** χωρίς σύγχυση.
+- [x] Κενές καταστάσεις και λάθη χειρισμένα αξιοπρεπώς (shared patterns σε buyer/supplier).
+- [ ] Χωρίς αχρείαστα αγγλικά στο κύριο UI — περιορισμένα residuals (audit όταν χρειαστεί).
+- [x] Εγχειρίδιο testers: [`docs/TESTING_GUIDE.md`](TESTING_GUIDE.md).
 
 ---
 
@@ -163,16 +163,18 @@
 - [x] **S2. Client foundation** (`lib/subscription.ts`). `Subscription` type, `useSubscriptionQuery` με 401/403 fallback σε `DEFAULT_FREE_SUBSCRIPTION` (κανένα null check στο UI), `useFeatures()` helper, πλήρες `FeatureSet` matrix, `PLAN_CATALOG` με τιμές & bullets, `useActivateProMutation`, `useCancelSubscriptionMutation`.
 - [x] **S3. UI.** Νέα `app/subscription.tsx` (current plan card, billing cycle toggle monthly/yearly, plan comparison cards με «Τρέχον»/«Προτεινόμενο» badges, upgrade CTA, destructive cancel με Alert.alert, legal fine print για mock flow). Το buyer `account.tsx` αντικατέστησε το «Δωρεάν demo» placeholder με πραγματικό `SubscriptionCard` που διαβάζει το real plan και linkάρει στην οθόνη.
 - [x] **S4. Pilot gating.** Reusable `<GatedAction>` component (single decision point: features flag → callback ή paywall redirect σε `/subscription` με Alert). Pilot στο buyer orders tab («Εξαγωγή ιστορικού», `canExportHistory`). Lock badge + a11y label «(απαιτεί Pro)» μόνο όταν locked.
-- [ ] **S5. Enforcement των υπόλοιπων gates** (επόμενο cycle, ανά feature όταν χτίζεται):
-  - Backend monthly order counter + 402 στο 11ο για free buyers· buyer UI «X/10 παραγγελίες αυτό το μήνα» στο orders tab.
-  - Favorites: cap στους 3 + paywall στο 4ο για free.
-  - Ιστορικό: filter παραγγελιών με `historyWindowDays` (free βλέπει τελευταίες 30 ημέρες, οι παλαιότερες πίσω από paywall row).
-  - Multi-location & team seats: όταν χτιστούν οι αντίστοιχες οθόνες (δεν υπάρχουν ακόμη — δεν έχει νόημα να gate-άρουμε ανύπαρκτο feature).
-  - Price alerts & cost comparison: όταν χτιστούν τα features.
+- [x] **S5. Enforcement — μεγαλύτερο μέρος για demo:**
+  - [x] Monthly order counter (`GET /api/me/orders/usage`, 402 στο checkout, badge στο Παραγγελίες).
+  - [x] Favorites server-side + cap 3 (free), paywall / 402 στο 4ο.
+  - [x] Ιστορικό 30 ημερών για free (`partitionOrdersByHistoryWindow` + paywall row)· Pro πλήρες.
+  - [x] Multi-location & invites: ροές `app/locations/*`, picker σε Home/Orders/Checkout, gates από `FeatureSet`.
+- [ ] **S5 leftovers (μετά το demo):**
+  - [ ] **Price alerts** (CRUD UI + worker)· εξαρτάται από προτεραιότητα προϊόντος.
+  - [ ] **canCompareCosts** επιπλέον polish αν θέλετε διακριτά paywalls πέρα από τα Έξοδα.
 - [ ] **S6. Πραγματικό billing.** RevenueCat integration πριν TestFlight: `react-native-purchases` SDK, products config στο App Store Connect (monthly + yearly pro), webhook → `POST /api/webhooks/revenuecat` που ενημερώνει το `subscriptions` table. Τα dev endpoints απενεργοποιούνται αυτόματα από το production env guard.
 
 **Παράδοση τώρα:** Demo-ready upgrade flow. Buyer βλέπει πραγματικό plan badge, ανοίγει την οθόνη συνδρομής, αναβαθμίζει σε Pro (mock), τα κλειδωμένα features ξεκλειδώνουν χωρίς restart.
 
 ---
 
-*Τελευταία ενημέρωση: σχέδιο για επανεκκίνηση υλοποίησης dual‑role.*
+*Τελευταία ενημέρωση: Μάιος 2026 — B2 και βασικά S5 enforcement ευθυγραμμίστηκαν με την τρέχουσα υλοποίηση.*

@@ -75,6 +75,10 @@ export type Order = {
   total: string;
   itemCount: number;
   deliveryWindow: string;
+  /** Unix epoch ms από το API· optional για mocks χωρίς ημερομηνία. */
+  createdAt?: number;
+  /** Φάση 3.1: SQL id του συνδεδεμένου buyer location (ως string στο wire). */
+  locationId?: string;
 };
 
 export const supplierCategories: SupplierCategory[] = [

@@ -2,10 +2,13 @@ import "../global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useColorScheme } from "react-native";
 import { useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import "@/lib/_core/nativewind-pressable";
+import { SchemeColors } from "@/constants/theme";
+import { NotificationResponseRouter } from "@/components/notification-response-router";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 
@@ -14,6 +17,10 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
+  const colorScheme = useColorScheme();
+  const stackBackdrop =
+    colorScheme === "dark" ? SchemeColors.dark.background : SchemeColors.light.background;
+
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -45,10 +52,27 @@ export default function RootLayout() {
       <SafeAreaProvider initialMetrics={providerInitialMetrics}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <QueryClientProvider client={queryClient}>
-            <Stack screenOptions={{ headerShown: false }}>
+            <NotificationResponseRouter />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                freezeOnBlur: false,
+                contentStyle: { flex: 1 },
+              }}
+            >
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="(supplier-tabs)" />
               <Stack.Screen name="oauth/callback" />
+              {/** Ρητή κάρτα ώστε το push από tabs να έχει αδιαφανές φόντο (αποφεύγει «άδειες» σελίδες σε iOS). */}
+              <Stack.Screen
+                name="spending"
+                options={{
+                  presentation: "card",
+                  gestureEnabled: true,
+                  animation: "default",
+                  contentStyle: { flex: 1, backgroundColor: stackBackdrop },
+                }}
+              />
             </Stack>
             <StatusBar style="auto" />
           </QueryClientProvider>

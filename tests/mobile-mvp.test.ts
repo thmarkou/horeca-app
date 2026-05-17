@@ -36,10 +36,16 @@ describe("Horeca Source mobile MVP", () => {
       "app/sign-up.tsx",
       "app/catalog.tsx",
       "app/product-detail.tsx",
+      "app/price-alerts.tsx",
+      "app/spending.tsx",
       "app/cart.tsx",
       "app/checkout.tsx",
       "app/supplier-profile.tsx",
       "app/order-detail.tsx",
+      "app/locations/index.tsx",
+      "app/locations/new.tsx",
+      "app/locations/[id].tsx",
+      "app/locations/_layout.tsx",
       "app/(supplier-tabs)/index.tsx",
       "app/(supplier-tabs)/orders.tsx",
       "app/(supplier-tabs)/catalog.tsx",
@@ -714,6 +720,8 @@ describe("Horeca Source mobile MVP", () => {
     expect(sub).toContain("maxLocations");
     expect(sub).toContain("maxTeamSeats");
     expect(sub).toContain("historyWindowDays");
+    expect(sub).toContain("unlimitedOrderHistory");
+    expect(sub).toContain("unlimitedSavedSuppliers");
     expect(sub).toContain("canExportHistory");
     expect(sub).toContain("canSetPriceAlerts");
     expect(sub).toContain("canCompareCosts");
@@ -725,6 +733,10 @@ describe("Horeca Source mobile MVP", () => {
     expect(sub).toMatch(/maxLocations: 1/);
     expect(sub).toMatch(/maxTeamSeats: 1/);
     expect(sub).toMatch(/historyWindowDays: 30/);
+    expect(sub).toMatch(/unlimitedOrderHistory:\s*false/);
+    expect(sub).toMatch(/unlimitedSavedSuppliers:\s*false/);
+    expect(sub).toMatch(/unlimitedOrderHistory:\s*true/);
+    expect(sub).toMatch(/unlimitedSavedSuppliers:\s*true/);
 
     // Pro limits — multi-location 5, team seats 5, υπόλοιπα Infinity/true.
     expect(sub).toMatch(/maxLocations: 5/);
@@ -776,6 +788,7 @@ describe("Horeca Source mobile MVP", () => {
     expect(gated).toContain('router.push("/subscription")');
     // Visual Pro badge μόνο όταν locked.
     expect(gated).toMatch(/!isUnlocked[\s\S]{0,600}Pro</);
+    expect(gated).toContain("showSubscriptionPaywallAlert");
 
     // Pilot: orders tab διαθέτει εξαγωγή ιστορικού πίσω από canExportHistory.
     expect(orders).toContain('feature="canExportHistory"');
@@ -1098,6 +1111,286 @@ describe("Horeca Source mobile MVP", () => {
     expect(src).toMatch(/notes:\s*notesBySupplier\[group\.supplierId\][^\n]*\|\|\s*undefined/);
   });
 
+  // ─── Phase 2.1: Free buyer μηνιαίο όριο παραγγελιών ────────────────────────
+
+  it("Phase 2.1: backend μετρά παραγγελίες μήνα, 402 αν όριο, GET /api/me/orders/usage", () => {
+    const src = readFileSync(path.join(root, "platform/app.ts"), "utf8");
+
+    expect(src).toContain("FREE_BUYER_MONTHLY_ORDER_LIMIT");
+    expect(src).toContain("calendarMonthBoundsForUsage");
+    expect(src).toContain("countBuyerOrdersSinceMonthStart");
+    expect(src).toMatch(/gte\(orders\.createdAt/);
+    expect(src).toMatch(/app\.get\("\/api\/me\/orders\/usage"/);
+    expect(src).toContain('"monthly_limit_reached"');
+    expect(src).toMatch(/\b402\b/);
+    expect(src).toMatch(/if \(buyerRow\.role !== "buyer"\)/);
+    expect(src).toContain("Only buyers have order usage metering");
+
+    expect(src).toContain("isUnlimited");
+    expect(src).toContain("resetsAt");
+  });
+
+  it("Phase 2.1: client usage hook + invalidate μετά order / αλλαγή plan", () => {
+    const horeca = readFileSync(path.join(root, "lib/horeca-queries.ts"), "utf8");
+    expect(horeca).toContain("useMonthlyOrderUsageQuery");
+    expect(horeca).toMatch(/apiRequest<\s*MonthlyOrderUsage\s*>\("\/api\/me\/orders\/usage"/);
+    expect(horeca).toContain("invalidateQueries({ queryKey: horecaQueryKeys.monthlyOrderUsage })");
+
+    const sub = readFileSync(path.join(root, "lib/subscription.ts"), "utf8");
+    const invCount =
+      sub.match(/\["horeca",\s*"monthlyOrderUsage"\]/g)?.length ?? 0;
+    expect(invCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("Phase 2.1: Οθόνη Παραγγελιών με badge όριου + subscription CTA", () => {
+    const src = readFileSync(path.join(root, "app/(tabs)/orders.tsx"), "utf8");
+    expect(src).toContain("useMonthlyOrderUsageQuery");
+    expect(src).toMatch(/παραγγελίες αυτόν τον μήνα/);
+    expect(src).toContain("Απεριόριστες παραγγελίες (Pro)");
+    expect(src).toContain("router.push(\"/subscription\")");
+    expect(src).toContain("Έφτασες το μηνιαίο όριο");
+  });
+
+  it("Phase 2.1: checkout paywall επί 402 με CTA σε /subscription", () => {
+    const src = readFileSync(path.join(root, "app/checkout.tsx"), "utf8");
+    expect(src).toContain("monthly_limit");
+    expect(src).toMatch(/e instanceof ApiError && e\.status === 402/);
+    expect(src).toContain("router.push(\"/subscription\")");
+  });
+
+  // ─── Phase 2.2 · S5.b Favorites persisted + free cap ─────────────────────────
+
+  it("Phase 2.2: favorites table + buyer endpoints με 402 cap + καθαρίσμος στη seed", () => {
+    const schemaSrc = readFileSync(path.join(root, "platform/db/schema.ts"), "utf8");
+    const platformSrc = readFileSync(path.join(root, "platform/app.ts"), "utf8");
+    const seedSrc = readFileSync(path.join(root, "scripts/seed-platform.ts"), "utf8");
+
+    expect(schemaSrc).toContain("export const favorites = sqliteTable(");
+    expect(schemaSrc).toContain("favorites_user_supplier_uq");
+
+    expect(platformSrc).toContain("FREE_BUYER_MAX_SAVED_SUPPLIERS");
+    expect(platformSrc).toContain('app.get("/api/me/favorites"');
+    expect(platformSrc).toContain('app.post("/api/me/favorites"');
+    expect(platformSrc).toContain('/api/me/favorites/:supplierId"');
+    expect(platformSrc).toContain('"favorites_limit_reached"');
+    expect(platformSrc).toMatch(/FREE_BUYER_MAX_SAVED_SUPPLIERS[\s\S]{0,120}402/);
+
+    expect(seedSrc).toContain("await db.delete(cartItems)");
+    expect(seedSrc).toContain("await db.delete(favorites)");
+    expect(seedSrc).toMatch(/favorites,\s*\n\s*cartItems/);
+  });
+
+  it("Phase 2.2: client hooks subscriptions invalidation και UI Αγαπημένα/καρδιά", () => {
+    const queries = readFileSync(path.join(root, "lib/horeca-queries.ts"), "utf8");
+    const gated = readFileSync(path.join(root, "components/ui/gated-action.tsx"), "utf8");
+    const favorites = readFileSync(path.join(root, "app/(tabs)/favorites.tsx"), "utf8");
+    const suppliers = readFileSync(path.join(root, "app/(tabs)/suppliers.tsx"), "utf8");
+    const supplierCard = readFileSync(path.join(root, "components/ui/supplier-card.tsx"), "utf8");
+    const supplierProfile = readFileSync(path.join(root, "app/supplier-profile.tsx"), "utf8");
+    const subscription = readFileSync(path.join(root, "lib/subscription.ts"), "utf8");
+
+    expect(queries).toContain("horecaQueryKeys.favorites");
+    expect(queries).toContain("export function useFavoritesQuery");
+    expect(queries).toContain("export function useAddFavoriteMutation");
+    expect(queries).toContain("export function useRemoveFavoriteMutation");
+    expect(queries).toContain("type FavoriteSuppliersCacheSnap");
+
+    expect(subscription).toContain('"horeca", "favorites"]');
+    expect(gated).toContain("unlimitedSavedSuppliers");
+
+    expect(supplierCard).toContain("FavoriteSupplierHeart");
+    expect(supplierCard).toContain("favoriteAccessory");
+
+    expect(favorites).toContain("useFavoritesQuery");
+    expect(favorites).toContain("/ ${cappedMax} αποθηκευμένοι");
+    expect(favorites).toContain("αγαπημένα");
+    expect(suppliers).toContain("FavoriteSupplierHeart");
+
+    expect(supplierProfile).toContain("FavoriteSupplierHeart");
+  });
+
+  // ─── Phase 2.3: Ιστορικό παραγγελιών 30 ημερών για free ─────────────────────
+
+  it("Phase 2.3: λίστα παραγγελιών + supplier tab φιλτράρουν & paywall σε παλιότερα", () => {
+    const buyer = readFileSync(path.join(root, "app/(tabs)/orders.tsx"), "utf8");
+    const supplier = readFileSync(path.join(root, "app/(supplier-tabs)/orders.tsx"), "utf8");
+    expect(buyer).toContain("partitionOrdersByHistoryWindow");
+    expect(buyer).toContain('feature="unlimitedOrderHistory"');
+    expect(buyer).toContain("hiddenOlderCount");
+    expect(supplier).toContain("partitionOrdersByHistoryWindow");
+    expect(supplier).toContain('feature="unlimitedOrderHistory"');
+  });
+
+  it("Phase 2.3: Αρχική (buyer) φιλτράρει πρόσφατες όπως το Orders tab + KPIs εντός παραθύρου", () => {
+    const home = readFileSync(path.join(root, "app/(tabs)/index.tsx"), "utf8");
+    expect(home).toContain("partitionOrdersByHistoryWindow");
+    expect(home).toContain("useFeatures()");
+    expect(home).toContain("ordersListFetchLimit");
+    expect(home).toContain("onlyOlderOutsideHistoryWindow");
+    expect(home).toContain("recentOrdersPreview");
+    expect(home).toContain("useBuyerActiveLocationPicker");
+    expect(home).toContain("locationId: activeLocationId");
+  });
+
+  it("Phase 2.3: API recent + Order type φέρνουν createdAt σε ms για το cutoff", () => {
+    const app = readFileSync(path.join(root, "platform/app.ts"), "utf8");
+    const mocks = readFileSync(path.join(root, "lib/mocks/horeca.ts"), "utf8");
+    expect(app).toContain("createdAt: orderCreatedAtMs(order.createdAt)");
+    expect(mocks).toMatch(/createdAt\?: number/);
+    const helpers = readFileSync(path.join(root, "lib/order-history-window.ts"), "utf8");
+    expect(helpers).toContain("partitionOrdersByHistoryWindow");
+    expect(helpers).toContain("cutoffMsForHistoryWindow");
+  });
+
+  // ─── Phase 3.1 · Multi-location & team invitations (buyer S5.d) ───────────
+
+  it("Phase 3.1: schema + endpoints locations / invites + orders.locationId ως όρος παραδόσεις ανά κατάστημα", () => {
+    const schema = readFileSync(path.join(root, "platform/db/schema.ts"), "utf8");
+    expect(schema).toContain('"locations"');
+    expect(schema).toContain("location_members");
+    expect(schema).toContain("location_invites");
+    expect(schema).toMatch(/locationId: integer\("location_id"\)/);
+
+    const app = readFileSync(path.join(root, "platform/app.ts"), "utf8");
+    expect(app).toContain('app.get("/api/me/locations"');
+    expect(app).toContain('app.post("/api/me/locations"');
+    expect(app).toContain('app.post("/api/me/invitations/accept"');
+    expect(app).toContain("FREE_BUYER_MAX_LOCATIONS_CAP");
+    expect(app).toContain("seats_limit_reached");
+
+    const seed = readFileSync(path.join(root, "scripts/seed-platform.ts"), "utf8");
+    expect(seed).toContain("locationId: buyerDefaultLocation.id");
+
+    const hooks = readFileSync(path.join(root, "hooks/use-buyer-active-location.ts"), "utf8");
+    expect(hooks).toContain("useBuyerLocationsQuery");
+
+    const checkout = readFileSync(path.join(root, "app/checkout.tsx"), "utf8");
+    expect(checkout).toContain("locationId: activeLocationNumericId");
+
+    const queries = readFileSync(path.join(root, "lib/horeca-queries.ts"), "utf8");
+    expect(queries).toContain("recentOrders:");
+    expect(queries).toContain("horecaQueryKeys.buyerLocations");
+    expect(queries).toContain("useIncomingInvitationsQuery");
+    expect(queries).toContain("/api/me/invitations/incoming");
+
+    const ordersTab = readFileSync(path.join(root, "app/(tabs)/orders.tsx"), "utf8");
+    expect(ordersTab).toContain("locationId: activeLocationId");
+  });
+
+  // ─── Phase 3.2 · Price alerts (buyer Pro) ─────────────────────────────────
+
+  it("Phase 3.2: price alerts table + endpoints + evaluator + UI/hooks glue", () => {
+    const schema = readFileSync(path.join(root, "platform/db/schema.ts"), "utf8");
+    expect(schema).toContain("price_alerts");
+    expect(schema).toContain("user_push_tokens");
+    expect(schema).toContain("price_alert_hits");
+    expect(schema).toContain("price_alert_email_digest");
+
+    const app = readFileSync(path.join(root, "platform/app.ts"), "utf8");
+    expect(app).toContain('app.get("/api/me/price-alerts"');
+    expect(app).toContain('app.post("/api/me/price-alerts"');
+    expect(app).toContain('app.patch("/api/me/price-alerts/:id"');
+    expect(app).toContain('app.delete("/api/me/price-alerts/:id"');
+    expect(app).toContain("price_alerts_requires_pro");
+    expect(app).toContain('app.post("/api/me/notifications/push-token"');
+    expect(app).toContain('app.delete("/api/me/notifications/push-tokens"');
+    expect(app).toContain('app.get("/api/me/notification-preferences"');
+    expect(app).toContain('app.patch("/api/me/notification-preferences"');
+
+    const evalSrc = readFileSync(path.join(root, "platform/lib/price-alerts-evaluate.ts"), "utf8");
+    expect(evalSrc).toContain("evaluatePriceAlerts");
+
+    const expoPush = readFileSync(path.join(root, "platform/lib/expo-push.ts"), "utf8");
+    expect(expoPush).toContain("exp.host");
+
+    const digest = readFileSync(path.join(root, "platform/lib/price-alert-email-digest.ts"), "utf8");
+    expect(digest).toContain("resend.com");
+
+    const platIndex = readFileSync(path.join(root, "platform/index.ts"), "utf8");
+    expect(platIndex).toContain("price-alerts-evaluate");
+    expect(platIndex).toContain("price-alert-email-digest");
+
+    const seed = readFileSync(path.join(root, "scripts/seed-platform.ts"), "utf8");
+    expect(seed).toContain("priceAlerts");
+    expect(seed).toContain("priceAlertHits");
+    expect(seed).toContain("userPushTokens");
+
+    const queries = readFileSync(path.join(root, "lib/horeca-queries.ts"), "utf8");
+    expect(queries).toContain("horecaQueryKeys.priceAlerts");
+    expect(queries).toContain('/api/me/price-alerts');
+    expect(queries).toContain("notificationPreferences");
+
+    const responseRouter = readFileSync(
+      path.join(root, "components/notification-response-router.tsx"),
+      "utf8",
+    );
+    expect(responseRouter).toContain("NotificationResponseRouter");
+    expect(responseRouter).toContain("clearLastNotificationResponse");
+    expect(responseRouter).toContain("price_alert");
+
+    const coreApi = readFileSync(path.join(root, "lib/_core/api.ts"), "utf8");
+    expect(coreApi).toContain("clearAllPushTokensOnServer");
+
+    const pushLib = readFileSync(path.join(root, "lib/push-notifications.ts"), "utf8");
+    expect(pushLib).toContain("registerBuyerExpoPushToken");
+    expect(pushLib).toContain("clearAllPushTokensOnServer");
+
+    const rootLayout = readFileSync(path.join(root, "app/_layout.tsx"), "utf8");
+    expect(rootLayout).toContain("NotificationResponseRouter");
+
+    const productDetail = readFileSync(path.join(root, "app/product-detail.tsx"), "utf8");
+    expect(productDetail).toContain("Ειδοποίησέ με");
+    expect(productDetail).toContain('feature="canSetPriceAlerts"');
+
+    const accountTab = readFileSync(path.join(root, "app/(tabs)/account.tsx"), "utf8");
+    expect(accountTab).toContain("/price-alerts");
+    expect(accountTab).toContain("priceAlertEmailDigest");
+
+    const appConfig = readFileSync(path.join(root, "app.config.ts"), "utf8");
+    expect(appConfig).toContain("expo-notifications");
+  });
+
+  // ─── Phase 3.3 · Buyer spending / comparative costs ────────────────────────
+
+  it("Phase 3.3: buyer spending aggregation, GET /api/me/spending, client + UI", () => {
+    expect(existsSync(path.join(root, "platform/lib/buyer-spending.ts"))).toBe(true);
+
+    const spendLib = readFileSync(path.join(root, "platform/lib/buyer-spending.ts"), "utf8");
+    expect(spendLib).toContain("aggregateBuyerSpending");
+
+    const platformSrc = readFileSync(path.join(root, "platform/app.ts"), "utf8");
+    expect(platformSrc).toContain('app.get("/api/me/spending"');
+    expect(platformSrc).toContain("aggregateBuyerSpending");
+
+    const queries = readFileSync(path.join(root, "lib/horeca-queries.ts"), "utf8");
+    expect(queries).toContain("/api/me/spending");
+    expect(queries).toContain("buyerSpending");
+    expect(queries).toContain('queryKey: ["horeca", "buyerSpending"]');
+
+    const spendingScreen = readFileSync(path.join(root, "app/spending.tsx"), "utf8");
+    expect(spendingScreen).toContain("useBuyerSpendingQuery");
+    expect(spendingScreen).toContain('feature="canExportHistory"');
+    expect(spendingScreen).toContain("SimpleSpendingLineChart");
+    expect(spendingScreen).toContain("exportAndShareUtf8Csv");
+
+    expect(existsSync(path.join(root, "components/ui/simple-spending-line-chart.tsx"))).toBe(true);
+
+    expect(existsSync(path.join(root, "lib/share-utf8-csv.ts"))).toBe(true);
+    const shareCsv = readFileSync(path.join(root, "lib/share-utf8-csv.ts"), "utf8");
+    expect(shareCsv).toContain("expo-file-system");
+    expect(shareCsv).toContain("Share");
+    expect(shareCsv).toContain("UTF8_BOM");
+
+    const pkg = readFileSync(path.join(root, "package.json"), "utf8");
+    expect(pkg).toContain('"expo-file-system"');
+
+    const accountTab = readFileSync(path.join(root, "app/(tabs)/account.tsx"), "utf8");
+    expect(accountTab).toContain("/spending");
+
+    const homeTab = readFileSync(path.join(root, "app/(tabs)/index.tsx"), "utf8");
+    expect(homeTab).toContain("/spending");
+  });
+
   // ─── Phase 0.4: GET /api/orders/:publicId + order detail screen ──────────
 
   it("Phase 0.4: GET /api/orders/:publicId υπάρχει με role-aware 404 isolation", () => {
@@ -1128,9 +1421,9 @@ describe("Horeca Source mobile MVP", () => {
     // counterpartyName flip — role-agnostic UI σε ένα endpoint.
     expect(src).toMatch(/counterpartyName: u\.role === "supplier" \? row\.buyerName : row\.supplierName/);
 
-    // Notes & createdAt εκτίθενται για detail screen.
+    // Notes & createdAt εκτίθενται για detail screen (ms wire).
     expect(src).toContain("notes: row.order.notes");
-    expect(src).toContain("createdAt: row.order.createdAt");
+    expect(src).toContain("createdAt: orderCreatedAtMs(row.order.createdAt)");
   });
 
   it("Phase 0.4: useOrderQuery handles disabled state, 404, και prepopulation", () => {
@@ -1160,10 +1453,11 @@ describe("Horeca Source mobile MVP", () => {
     expect(src).toContain("useOrderQuery");
     expect(src).toMatch(/useOrderQuery\(\{ publicId: id \}\)/);
 
-    // Render line items (όχι μόνο aggregate count)
+    // Render line items & paywall όταν το ιστορικό κλειδώνεται (free 30d gate)
     expect(src).toContain("OrderItemsCard");
     expect(src).toContain("item.productName");
-    expect(src).toContain("item.lineTotal");
+    expect(src).toContain("LockedOlderOrderPlaceholder");
+    expect(src).toContain("unlimitedOrderHistory");
 
     // Notes section μόνο αν υπάρχουν
     expect(src).toMatch(/order\.notes\?\.trim\(\)/);
@@ -1521,6 +1815,11 @@ describe("Horeca Source mobile MVP", () => {
     // Hero: «Νέος» pill + παράκαμψη placeholder highlight για fresh suppliers.
     expect(profile).toContain('supplier?.isOnboarded === false');
     expect(profile).toContain("Ο προμηθευτής συμπληρώνει το προφίλ του");
+
+    // Δεύτερη σειρά stats (rating / συνεργασία / παραδόσεις KPI placeholder).
+    expect(profile).toContain("Αξιοπιστία συνεργάτη");
+    expect(profile).toContain("Έτη συνεργασίας");
+    expect(profile).toContain("Σύντομα διαθέσιμο KPI");
   });
 
   it("Phase 1.1: useSupplier queries δέχονται optional enabled flag", () => {
@@ -1551,6 +1850,17 @@ describe("Horeca Source mobile MVP", () => {
     expect(suppliers).toContain("hasActiveFilters");
     expect(suppliers).toContain("handleResetFilters");
     expect(suppliers).toContain("Καθάρισε φίλτρα");
+  });
+
+  it("Phase 1.2 (documentation): TESTING_GUIDE.md για testers", () => {
+    const guide = readFileSync(path.join(root, "docs/TESTING_GUIDE.md"), "utf8");
+    expect(guide).toContain("buyer@horeca.demo");
+    expect(guide).toContain("supplier@horeca.demo");
+    expect(guide).toContain("demo1234");
+    expect(guide).toMatch(/Έξοδος|sign out/i);
+    expect(guide).toContain("Αγαπημένα");
+    expect(guide).toMatch(/push notifications|notifications/i);
+    expect(guide).toMatch(/GitHub|Issues/i);
   });
 
   it("Phase 1.2: schema ορίζει cart_items με unique(userId,productId) + cascade", () => {

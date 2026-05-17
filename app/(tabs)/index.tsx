@@ -8,14 +8,17 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
+import { useBuyerActiveLocationPicker } from "@/hooks/use-buyer-active-location";
 import * as Auth from "@/lib/_core/auth";
 import { getFirstName } from "@/lib/greeting";
+import { partitionOrdersByHistoryWindow } from "@/lib/order-history-window";
 import {
   useFeaturedProductsQuery,
   useRecentOrdersQuery,
   useSupplierCategoriesQuery,
   useSuppliersListQuery,
 } from "@/lib/horeca-queries";
+import { useFeatures } from "@/lib/subscription";
 
 type QuickAction = {
   key: string;
@@ -28,12 +31,16 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: "search", label: "Αναζήτηση", icon: "magnifyingglass", href: "/suppliers" },
   { key: "suppliers", label: "Προμηθευτές", icon: "building.2.fill", href: "/suppliers" },
   { key: "orders", label: "Παραγγελίες", icon: "bag.fill", href: "/(tabs)/orders" },
+  { key: "spending", label: "Έξοδα", icon: "chart.bar.fill", href: "/spending" },
   { key: "favorites", label: "Αγαπημένα", icon: "heart.fill", href: "/(tabs)/favorites" },
 ];
 
 export default function HomeScreen() {
   const router = useRouter();
   const colors = useColors();
+  const features = useFeatures();
+
+  const { activeLocationId, showPicker, locations, setActiveLocationId } = useBuyerActiveLocationPicker();
 
   // SecureStore read is fast; keep it as local state to match the rest of the
   // app (see `app/(tabs)/_layout.tsx`) instead of introducing a new react-query
@@ -53,7 +60,24 @@ export default function HomeScreen() {
   const { data: supplierCategories = [] } = useSupplierCategoriesQuery();
   const { data: suppliers = [] } = useSuppliersListQuery({});
   const { data: featuredProducts = [] } = useFeaturedProductsQuery({ limit: 10 });
-  const { data: recentOrders = [] } = useRecentOrdersQuery({ limit: 10 });
+
+  /** Ίδιο ρίσκο/όφελος με το Orders tab: μεγαλύτερο fetch όταν το free cutoff κόβει τις σειρές ώστε η λίστα να γεμίζει. */
+  const ordersListFetchLimit =
+    features.historyWindowDays === Number.POSITIVE_INFINITY ? 20 : 100;
+  const { data: ordersFeedForHome = [], isLoading: ordersFeedLoading } = useRecentOrdersQuery({
+    limit: ordersListFetchLimit,
+    locationId: activeLocationId,
+  });
+
+  const { visibleOrders: visibleOrdersInWindow } = useMemo(
+    () => partitionOrdersByHistoryWindow(ordersFeedForHome, features.historyWindowDays),
+    [ordersFeedForHome, features.historyWindowDays],
+  );
+
+  const recentOrdersPreview = useMemo(
+    () => visibleOrdersInWindow.slice(0, 10),
+    [visibleOrdersInWindow],
+  );
 
   // Σκόπιμα δείχνουμε μόνο το ρόλο («Buyer») αντί για χαιρετισμό + όνομα.
   // Ο `userName` συνεχίζει να φορτώνεται για το avatar initial — αλλιώς θα
@@ -64,13 +88,21 @@ export default function HomeScreen() {
   // KPI strip computed from the recent orders feed so numbers stay in sync
   // with what the user actually sees below (single source of truth).
   const kpis = useMemo(() => {
-    const inProgress = recentOrders.filter((o) => o.status === "Σε επεξεργασία").length;
-    const onTheWay = recentOrders.filter((o) => o.status === "Καθ' οδόν").length;
-    const pendingReview = recentOrders.filter((o) => o.status === "Νέα").length;
+    const base = visibleOrdersInWindow;
+    const inProgress = base.filter((o) => o.status === "Σε επεξεργασία").length;
+    const onTheWay = base.filter((o) => o.status === "Καθ' οδόν").length;
+    const pendingReview = base.filter((o) => o.status === "Νέα").length;
     return { inProgress, onTheWay, pendingReview };
-  }, [recentOrders]);
+  }, [visibleOrdersInWindow]);
 
-  const hasRecentOrders = recentOrders.length > 0;
+  const historyWindowLimited = features.historyWindowDays < Number.POSITIVE_INFINITY;
+  const onlyOlderOutsideHistoryWindow =
+    !ordersFeedLoading &&
+    ordersFeedForHome.length > 0 &&
+    visibleOrdersInWindow.length === 0 &&
+    historyWindowLimited;
+
+  const hasRecentOrders = recentOrdersPreview.length > 0;
 
   return (
     <ScreenContainer className="px-5" containerClassName="bg-background">
@@ -97,6 +129,40 @@ export default function HomeScreen() {
               Βρες προμηθευτές, επανάλαβε παραγγελίες και παρακολούθησε παραδόσεις χωρίς τηλεφωνήματα και χαρτιά.
             </Text>
           </View>
+
+          {showPicker ? (
+            <View className="gap-3">
+              <View className="flex-row items-center justify-between">
+                <Text className="text-sm font-semibold text-foreground">Ενεργό κατάστημα</Text>
+                <TouchableOpacity accessibilityRole="button" onPress={() => router.push("/locations")}>
+                  <Text className="text-xs font-semibold text-primary">Διαχείριση</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View className="flex-row flex-wrap gap-2">
+                  {locations.map((loc) => {
+                    const active = loc.id === activeLocationId;
+                    return (
+                      <TouchableOpacity
+                        key={loc.id}
+                        onPress={() => setActiveLocationId(loc.id)}
+                        className={`rounded-full border px-3 py-2 ${
+                          active ? "border-primary bg-primary/10" : "border-border bg-surface"
+                        }`}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          className={`max-w-[200px] text-xs font-semibold ${active ? "text-primary" : "text-foreground"}`}
+                        >
+                          {loc.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </View>
+          ) : null}
 
           <View className="rounded-[28px] bg-primary px-5 py-5">
             <Text className="text-sm font-semibold text-background/80">Γρήγορη επανάληψη</Text>
@@ -279,7 +345,7 @@ export default function HomeScreen() {
             </View>
             {hasRecentOrders ? (
               <View className="gap-3">
-                {recentOrders.map((order) => (
+                {recentOrdersPreview.map((order) => (
                   <TouchableOpacity
                     key={order.id}
                     onPress={() => router.push({ pathname: "/order-detail", params: { id: order.id } })}
@@ -301,6 +367,13 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+            ) : onlyOlderOutsideHistoryWindow ? (
+              <EmptyState
+                icon={{ name: "clock.fill", color: colors.primary }}
+                title={`Ορατό ιστορικό: τελευταίες ${features.historyWindowDays} ημέρες`}
+                body={`Δεν υπάρχουν παραγγελίες εντός του δωρεάν παραθύρου των τελευταίων ${features.historyWindowDays} ημερών. Το υπόλοιπο ιστορικό είναι στο tab «Παραγγελίες».`}
+                cta={{ label: "Άνοιγμα Παραγγελιών", onPress: () => router.push("/(tabs)/orders") }}
+              />
             ) : (
               <EmptyState
                 icon={{ name: "bag.fill", color: colors.primary }}
