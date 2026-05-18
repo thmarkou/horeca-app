@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Alert, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
 
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
@@ -42,6 +42,8 @@ export function GatedAction({
   variant = "primary",
   paywallTitle,
   paywallMessage,
+  disabled = false,
+  busy = false,
 }: {
   feature: GateFeature;
   label: string;
@@ -50,18 +52,24 @@ export function GatedAction({
   variant?: "primary" | "outline";
   paywallTitle?: string;
   paywallMessage?: string;
+  /** Όταν ξεκλειδωμένο: αποκλείσει την ενέργεια (π.χ. εξαγωγή σε εξέλιξη). */
+  disabled?: boolean;
+  /** Προβολή spinner αντί για εικονίδιο όταν ήδη ξεκλειδωμένο και τρέχει async έργο. */
+  busy?: boolean;
 }) {
   const features = useFeatures();
   const colors = useColors();
   const router = useRouter();
   const isUnlocked = features[feature];
+  const interactionLocked = isUnlocked && (disabled || busy);
 
   const handlePress = () => {
-    if (isUnlocked) {
-      onUnlockedPress();
+    if (!isUnlocked) {
+      showSubscriptionPaywallAlert(() => router.push("/subscription"), paywallTitle, paywallMessage);
       return;
     }
-    showSubscriptionPaywallAlert(() => router.push("/subscription"), paywallTitle, paywallMessage);
+    if (interactionLocked) return;
+    onUnlockedPress();
   };
 
   const baseClass =
@@ -78,11 +86,21 @@ export function GatedAction({
     <TouchableOpacity
       onPress={handlePress}
       accessibilityRole="button"
-      accessibilityLabel={isUnlocked ? label : `${label} (απαιτεί Pro)`}
-      accessibilityState={{ disabled: false }}
-      className={baseClass}
+      accessibilityLabel={
+        !isUnlocked
+          ? `${label} (απαιτεί Pro)`
+          : busy
+            ? `${label} σε εξέλιξη`
+            : label
+      }
+      accessibilityState={{ disabled: interactionLocked }}
+      className={`${baseClass}${interactionLocked ? " opacity-60" : ""}`}
     >
-      {iconName ? <IconSymbol name={iconName} size={16} color={iconColor} /> : null}
+      {busy && isUnlocked ? (
+        <ActivityIndicator size="small" color={iconColor} />
+      ) : iconName ? (
+        <IconSymbol name={iconName} size={16} color={iconColor} />
+      ) : null}
       <Text className={textClass}>{label}</Text>
       {!isUnlocked ? (
         <View className="ml-1 rounded-full bg-warning/20 px-2 py-[2px]">

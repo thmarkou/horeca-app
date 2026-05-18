@@ -600,7 +600,7 @@ app.post("/api/orders", async (c) => {
 app.get("/api/orders/recent", async (c) => {
   const userId = await getAuthUserId(c);
   if (!userId) return c.json({ error: "Unauthorized" }, 401);
-  const limit = Math.min(100, Math.max(1, Number(c.req.query("limit")) || 20));
+  const limit = Math.min(500, Math.max(1, Number(c.req.query("limit")) || 20));
 
   const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!u) return c.json({ orders: [] });

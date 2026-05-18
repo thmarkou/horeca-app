@@ -11,13 +11,14 @@ import { useColors } from "@/hooks/use-colors";
 import { useBuyerActiveLocationPicker } from "@/hooks/use-buyer-active-location";
 import * as Auth from "@/lib/_core/auth";
 import { getFirstName } from "@/lib/greeting";
-import { partitionOrdersByHistoryWindow } from "@/lib/order-history-window";
 import {
   useFeaturedProductsQuery,
   useRecentOrdersQuery,
   useSupplierCategoriesQuery,
   useSuppliersListQuery,
 } from "@/lib/horeca-queries";
+import { ORDERS_EXPORT_MAX_LIMIT } from "@/lib/orders-export-csv";
+import { partitionOrdersByHistoryWindow } from "@/lib/order-history-window";
 import { useFeatures } from "@/lib/subscription";
 
 type QuickAction = {
@@ -61,9 +62,9 @@ export default function HomeScreen() {
   const { data: suppliers = [] } = useSuppliersListQuery({});
   const { data: featuredProducts = [] } = useFeaturedProductsQuery({ limit: 10 });
 
-  /** Ίδιο ρίσκο/όφελος με το Orders tab: μεγαλύτερο fetch όταν το free cutoff κόβει τις σειρές ώστε η λίστα να γεμίζει. */
+  /** Συμβατό με Orders tab: Pro φορτώνει έως server cap. */
   const ordersListFetchLimit =
-    features.historyWindowDays === Number.POSITIVE_INFINITY ? 20 : 100;
+    features.historyWindowDays === Number.POSITIVE_INFINITY ? ORDERS_EXPORT_MAX_LIMIT : 100;
   const { data: ordersFeedForHome = [], isLoading: ordersFeedLoading } = useRecentOrdersQuery({
     limit: ordersListFetchLimit,
     locationId: activeLocationId,

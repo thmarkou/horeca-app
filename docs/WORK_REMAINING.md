@@ -6,7 +6,7 @@
 
 1. ~~**Demo-ready MVP**~~ ✅ (B2 polish, testers guide, προαιρετικό device checklist §1.3).
 2. ~~**S5 enforcement (μεγαλύτερο μέρος)**~~ ✅ (όριο παραγγελιών, favorites, ιστορικό 30 ημ., τοποθεσίες + invites).
-3. **Νέες λειτουργίες** — τι απομένει: κατά κύριο λόγο **3.2 price alerts**.
+3. **Νέες λειτουργίες** — μένει επέκταση **παραγωγής** για price alerts/push ή **μεγαλύτερα όρια** εξαγωγής αν χρειαστεί.
 4. **Πριν το store (TestFlight / App Store)** — **Φάση 4**: S6 + E3.
 
 ### Πίνακας κατάστασης demo (Μάιος 2026)
@@ -21,7 +21,7 @@
 | 2.3 History window | ✅ | `partitionOrdersByHistoryWindow`, `order-detail.tsx` gated |
 | 3.1 Multi-location | ✅ | `app/locations/*`, `useBuyerActiveLocationPicker`, gates από `FeatureSet` |
 | 3.3 Έξοδα / spending | ✅ | `app/spending.tsx`, `GET /api/me/spending` |
-| 3.2 Price alerts | 🔲 | Ανοικτό backlog |
+| 3.2 Price alerts | ✅ demo | `app/product-detail`, `price-alerts`, API + server evaluate interval· για **production** διαμορφώνεις Expo push / SMTP |
 | 4 Store / infra | 🔲 | S6 RevenueCat · E3 hosting |
 
 <details>
@@ -93,26 +93,26 @@
 
 ## Φάση 3 — Τι ανοίγει μετά το κλείσιμο demo
 
-**Ολοκληρωμένο:** 3.1 locations, 3.3 έξοδα (`spending`). **Ανοικτό ως επέκταση:** 3.2 price alerts παρακάτω.
+**Ολοκληρωμένο:** 3.1 locations, 3.3 έξοδα, **3.2 price alerts στο επίπεδο demo**. **Επέκταση παραγωγής (όχι block για τοπικό demo):** σταθερές APN, outbound email, SLA worker.
 
-### 3.2 · Price alerts (`S5.e`, backlog)
+### 3.2 · Price alerts (`S5.e`) — demo έτοιμο, παραγωγική σκληράνση εκτός scope MVP
 
-**Στόχος.** Ο buyer να ορίζει «Ειδοποίησέ με αν το [προϊόν] πέσει κάτω από [τιμή]».
+Ο πυρήνας υπάρχει στο repo (`POST/GET`/CRUD στο platform, λίστα `app/price-alerts.tsx`, ροή προϊόντος με `canSetPriceAlerts`, περιοδική `evaluatePriceAlerts` κατά τον τρέχοντα διακομιστή). Για διακομιστές χωρίς συνεχή uptime ή χωρίς SMTP / APN διαμόρφωση τα ερεθίσματα push/email είναι **κατά περίπτωση** — διαφανές στο testers guide.
 
-**Απαιτήσεις.**
+<details>
+<summary>Αρχικό spec (αρχείο)</summary>
 
-- **Data model**: `price_alerts` table (`userId`, `productId`, `threshold`, `active`, `createdAt`).
+**Στόχος.** Ο buyer να ορίζει όριο τιμής ανά προϊόν.
+
+**Κατάσταση:** Υλοποιημένο στο demo· παραγωγή = APN + SMTP + hosting.
+
+**Απαιτήσεις (αρχείο).**
+
+- **Data model**: `price_alerts`…
 - **Endpoints**: CRUD.
-- **Worker**: Cron/interval που ελέγχει τιμές προϊόντων και στέλνει push notification (ή email) όταν threshold hit. **Απαιτεί push notification infrastructure**.
-- **UI**:
-  - Στο product detail, button «Ειδοποίησέ με» → modal με price picker → save.
-  - Νέα οθόνη `app/price-alerts.tsx` (λίστα alerts, edit, delete).
+- **Worker**: interval + push/email.
 
-**Αρχεία που επηρεάζονται.** Νέα οθόνη, νέο backend component (worker), schema changes, push notification setup.
-
-**Εκτιμώμενο scope.** 2–3 μέρες, εκ των οποίων 1 μέρα για push notifications (APNs cert, expo-notifications config, token registration).
-
-**Εξαρτήσεις.** Push notifications infrastructure (Apple Push Notification service). Στο repo υπάρχει ήδη plugin `expo-notifications`· το υπόλοιπο είναι υλοποίηση ροής price alerts και worker.
+</details>
 
 <details>
 <summary>Αρχείο: 3.3 Έξοδα — ολοκληρώθηκε</summary>

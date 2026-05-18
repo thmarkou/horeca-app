@@ -168,9 +168,11 @@
   - [x] Favorites server-side + cap 3 (free), paywall / 402 στο 4ο.
   - [x] Ιστορικό 30 ημερών για free (`partitionOrdersByHistoryWindow` + paywall row)· Pro πλήρες.
   - [x] Multi-location & invites: ροές `app/locations/*`, picker σε Home/Orders/Checkout, gates από `FeatureSet`.
-- [ ] **S5 leftovers (μετά το demo):**
-  - [ ] **Price alerts** (CRUD UI + worker)· εξαρτάται από προτεραιότητα προϊόντος.
-  - [ ] **canCompareCosts** επιπλέον polish αν θέλετε διακριτά paywalls πέρα από τα Έξοδα.
+  - [x] Price alerts (Pro): ροή προϊόντος + `app/price-alerts`, API, server evaluate + push/email όταν ρυθμιστεί περιβάλλον.
+  - [x] Εξαγωγή CSV ιστορικού παραγγελιών (Pro, share sheet) μέσω `lib/orders-export-csv` συν αύξηση cap `GET /api/orders/recent`.
+- [ ] **S5 leftovers (μετα-demo / παραγωγή):**
+  - [ ] **canCompareCosts** επιπλέον paywall touches όπου προκύψει νέο BI UI.
+  - [ ] Επικύρωση push + email digest price alerts σε staging (APN, Expo project, outbound SMTP/Resend env).
 - [ ] **S6. Πραγματικό billing.** RevenueCat integration πριν TestFlight: `react-native-purchases` SDK, products config στο App Store Connect (monthly + yearly pro), webhook → `POST /api/webhooks/revenuecat` που ενημερώνει το `subscriptions` table. Τα dev endpoints απενεργοποιούνται αυτόματα από το production env guard.
 
 **Παράδοση τώρα:** Demo-ready upgrade flow. Buyer βλέπει πραγματικό plan badge, ανοίγει την οθόνη συνδρομής, αναβαθμίζει σε Pro (mock), τα κλειδωμένα features ξεκλειδώνουν χωρίς restart.

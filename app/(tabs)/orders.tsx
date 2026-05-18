@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
@@ -9,9 +9,16 @@ import { GatedAction } from "@/components/ui/gated-action";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useBuyerActiveLocationPicker } from "@/hooks/use-buyer-active-location";
 import { useColors } from "@/hooks/use-colors";
-import { partitionOrdersByHistoryWindow } from "@/lib/order-history-window";
-import { useRecentOrdersQuery, useMonthlyOrderUsageQuery } from "@/lib/horeca-queries";
+import { ApiError } from "@/lib/api/http";
+import {
+  fetchRecentOrdersForExport,
+  useMonthlyOrderUsageQuery,
+  useRecentOrdersQuery,
+} from "@/lib/horeca-queries";
 import type { Order, OrderStatus } from "@/lib/mocks/horeca";
+import { ORDERS_EXPORT_MAX_LIMIT, ordersToUtf8CsvBody } from "@/lib/orders-export-csv";
+import { partitionOrdersByHistoryWindow } from "@/lib/order-history-window";
+import { exportAndShareUtf8Csv } from "@/lib/share-utf8-csv";
 import { useFeatures } from "@/lib/subscription";
 
 type OrderFilter = "active" | "history" | "all";
@@ -45,9 +52,9 @@ export default function OrdersScreen() {
   const features = useFeatures();
 
   const { activeLocationId, showPicker, locations, setActiveLocationId } = useBuyerActiveLocationPicker();
-  /** Free: ανεβάζουμε μέχρι το max του API για ακριβέστερο +N σε παλαιότερες. */
+  /** Pro: μέχρι τον server cap για να φαίνεται πλήρες ιστορικό στη λίστα· Δωρεάν: ≥100 για ακρίβεια στο +N σε παλιότερες. */
   const listFetchLimit =
-    features.historyWindowDays === Number.POSITIVE_INFINITY ? 20 : 100;
+    features.historyWindowDays === Number.POSITIVE_INFINITY ? ORDERS_EXPORT_MAX_LIMIT : 100;
   const { data: recentOrders = [], isLoading } = useRecentOrdersQuery({
     limit: listFetchLimit,
     locationId: activeLocationId,
@@ -55,6 +62,39 @@ export default function OrdersScreen() {
   const usageQuery = useMonthlyOrderUsageQuery();
   const usage = usageQuery.data;
   const [filter, setFilter] = useState<OrderFilter>("active");
+  const [ordersExportBusy, setOrdersExportBusy] = useState(false);
+
+  const handleExportOrdersCsv = useCallback(async () => {
+    setOrdersExportBusy(true);
+    try {
+      const rows = await fetchRecentOrdersForExport({
+        limit: ORDERS_EXPORT_MAX_LIMIT,
+        locationId: activeLocationId,
+      });
+      if (rows.length === 0) {
+        Alert.alert(
+          "Εξαγωγή ιστορικού",
+          "Δεν υπάρχουν παραγγελίες προς εξαγωγή για το τρέχον φίλτρο τοποθεσίας και λογαριασμό σου.",
+        );
+        return;
+      }
+      const body = ordersToUtf8CsvBody(rows);
+      await exportAndShareUtf8Csv({
+        body,
+        fileNameStem: "horeca_orders",
+      });
+    } catch (e) {
+      const msg =
+        e instanceof ApiError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : "Δεν ήταν δυνατή η εξαγωγή. Ελέγξτε σύνδεση και δοκιμάστε ξανά.";
+      Alert.alert("Εξαγωγή ιστορικού", msg);
+    } finally {
+      setOrdersExportBusy(false);
+    }
+  }, [activeLocationId]);
 
   const { visibleOrders, hiddenOlderCount } = useMemo(
     () => partitionOrdersByHistoryWindow(recentOrders, features.historyWindowDays),
@@ -192,17 +232,13 @@ export default function OrdersScreen() {
 
           <GatedAction
             feature="canExportHistory"
-            label="Εξαγωγή ιστορικού"
+            label={ordersExportBusy ? "Εξαγωγή σε εξέλιξη…" : "Εξαγωγή ιστορικού"}
             iconName="arrow.right"
             variant="outline"
+            busy={ordersExportBusy}
             paywallTitle="Εξαγωγή μόνο με Pro"
-            paywallMessage="Το Pro ξεκλειδώνει εξαγωγή PDF/CSV για λογιστικό, παρέχοντας και πλήρες ιστορικό χωρίς όριο 30 ημερών."
-            onUnlockedPress={() =>
-              Alert.alert(
-                "Εξαγωγή ιστορικού",
-                "Σύντομα διαθέσιμη. Θα σταλεί στο email του λογαριασμού.",
-              )
-            }
+            paywallMessage="Το Pro ξεκλειδώνει CSV (UTF‑8 για Excel / λογιστικό) μέσω της κοινής κοινοποίησης του συστήματος, μαζί με το πλήρες ιστορικό παραγγελιών χωρίς το όριο 30 ημερών."
+            onUnlockedPress={() => void handleExportOrdersCsv()}
           />
 
           <View className="gap-3 pb-2">

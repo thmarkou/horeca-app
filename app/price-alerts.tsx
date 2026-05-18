@@ -64,8 +64,9 @@ export default function PriceAlertsScreen() {
       </TouchableOpacity>
       <Text className="text-[26px] font-bold text-foreground">Ειδοποιήσεις τιμής</Text>
       <Text className="mt-2 text-base leading-6 text-muted">
-        Όταν η τιμή καταλόγου υποχωρήσει μέχρι ή κάτω από το όριό σου (Pro), η εφαρμογή τη σημειώνει εδώ. Στο μέλλον:
-        push/email.
+        Ο server ελέγχει τις ενεργές ειδοποιήσεις περιοδικά όσο τρέχει η πλατφόρμα («χτύπημα»: η τιμή καταλόγου είναι ≤ στο όριό σας). Τα συμβάντα και το ιστορικό ενημερώσεων τα βλέπεις εδώ. Ταυτόχρονη
+        πρόσβαση push (Expo) προσπαθεί αν έχεις εγγράψει συσκευή στον λογαριασμό· προαιρετικό email digest ρυθμίζεται απ’ το tab
+        Λογαριασμός.
       </Text>
 
       {isPending && !data?.length ? (

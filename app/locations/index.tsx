@@ -37,6 +37,10 @@ export default function LocationsListScreen() {
     <ScreenContainer className="flex-1 bg-background px-5">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
         <View className="pt-2 pb-6 gap-4">
+          <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} className="pt-3 pb-1">
+            <Text className="text-sm font-semibold text-primary">Πίσω</Text>
+          </TouchableOpacity>
+          <Text className="text-[26px] font-bold text-foreground">Καταστήματα & ομάδα</Text>
           <Text className="text-[13px] text-muted leading-5">
             Free: μέχρι {features.maxLocations} κατάστημα και {features.maxTeamSeats}{" "}
             χρηστές/κατάστημα με το τρέχον πλάνο. Pro ξεκλειδώνει τα όρια.

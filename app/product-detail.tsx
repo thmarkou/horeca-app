@@ -81,7 +81,7 @@ export default function ProductDetailScreen() {
       await createPriceAlertMutation.mutateAsync({ productId, thresholdEur: n });
       Alert.alert(
         "Αποθηκεύτηκε",
-        `Θα σου επισημάνουμε στο «Ειδοποιήσεις τιμής» όταν η τιμή του προϊόντος είναι ≤ ${formatEur(n)}.`,
+        `Θα σου επισημαίνουμε στο «Ειδοποιήσεις τιμής» όταν η τιμή καταλόγου είναι ≤ ${formatEur(n)}. Αν υπάρχει διαθέσιμη συσκευή για ειδοποιήσεις, ενεργοποιείται push· από τη λίστα μπορείς να δεις τις επιβεβαιώσεις. Προαιρετικό email digest: Λογαριασμός → ρύθμιση.`,
         [{ text: "ΟΚ" }],
       );
       setNotifyModalOpen(false);

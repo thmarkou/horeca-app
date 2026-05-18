@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, apiRequest } from "@/lib/api/http";
+import { ORDERS_EXPORT_MAX_LIMIT } from "@/lib/orders-export-csv";
 import type { Order, Product, Supplier } from "@/lib/mocks/horeca";
 
 export type ProductDetail = Product & { description: string; supplierName: string };
@@ -116,6 +117,30 @@ export function useRecentOrdersQuery(options?: {
       }
     },
   });
+}
+
+/**
+ * Φόρτωση μέχρι {@link ORDERS_EXPORT_MAX_LIMIT} παραγγελιών για εξαγωγή CSV (Pro).
+ */
+export async function fetchRecentOrdersForExport(options?: {
+  limit?: number;
+  locationId?: string | null;
+}): Promise<Order[]> {
+  const cap = Math.min(
+    ORDERS_EXPORT_MAX_LIMIT,
+    Math.max(1, Number(options?.limit) || ORDERS_EXPORT_MAX_LIMIT),
+  );
+  const locationId =
+    typeof options?.locationId === "string" && options.locationId.length > 0
+      ? options.locationId
+      : null;
+  const qLoc = locationId != null ? `&locationId=${encodeURIComponent(locationId)}` : "";
+
+  const data = await apiRequest<{ orders: Order[] }>(
+    `/api/orders/recent?limit=${cap}${qLoc}`,
+    { auth: true },
+  );
+  return data.orders;
 }
 
 export function useFavoritesQuery() {

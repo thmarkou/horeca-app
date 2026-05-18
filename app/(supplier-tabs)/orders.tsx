@@ -9,6 +9,7 @@ import { GatedAction } from "@/components/ui/gated-action";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useColors } from "@/hooks/use-colors";
 import { partitionOrdersByHistoryWindow } from "@/lib/order-history-window";
+import { ORDERS_EXPORT_MAX_LIMIT } from "@/lib/orders-export-csv";
 import { useRecentOrdersQuery } from "@/lib/horeca-queries";
 import type { Order, OrderStatus } from "@/lib/mocks/horeca";
 import { useFeatures } from "@/lib/subscription";
@@ -40,7 +41,7 @@ export default function SupplierOrdersTabScreen() {
   const colors = useColors();
   const features = useFeatures();
   const listFetchLimit =
-    features.historyWindowDays === Number.POSITIVE_INFINITY ? 20 : 100;
+    features.historyWindowDays === Number.POSITIVE_INFINITY ? ORDERS_EXPORT_MAX_LIMIT : 100;
   const { data: recentOrders = [], isLoading } = useRecentOrdersQuery({
     limit: listFetchLimit,
   });
